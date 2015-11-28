@@ -1,12 +1,13 @@
 import sys
 import asyncio
-import janus
 import os
 import logging
 import time
 import signal
 import traceback
 import shelve
+import threading
+from multiprocessing import Queue, Lock
 
 sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
@@ -19,37 +20,79 @@ from xmpp.browser import Browser
 from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed
 from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX
 from xmpp.simplexml import Node
-
 import config
 
 _log = logging.getLogger(__name__)
 
 NODE_ROSTER = 'roster'
 
+xmpp_queue = Queue()
+xmpp_lock = Lock()
+hangups_manager = None
 
-class HangupsThread:
-    def __init__(self):
+
+class HangupsManager:
+    hangouts_threads = {}
+
+    def spawn_thread(self, jid):
+        thread = HangupsThread(jid)
+        self.hangouts_threads[jid] = thread
+        thread.start()
+
+    def get_thread(self, jid):
+        if not jid in self.hangouts_threads:
+            return None
+        return self.hangouts_threads[jid]
+
+    def remove_thread(self, jid):
+        if jid in self.hangouts_threads:
+            del self.hangouts_threads[jid]
+
+    def send_message(self, jid, message):
+        thread = self.get_thread(jid)
+        if thread is not None:
+            thread.call_soon_thread_safe(message)
+
+class HangupsThread(threading.Thread):
+    def __init__(self, jid):
+        super().__init__()
+
+        self.jid = jid
+
         try:
-            cookies = hangups.auth.get_auth_stdin('refresh_token.txt')
+            self.cookies = hangups.auth.get_auth_stdin('refresh_token.txt')
         except hangups.GoogleAuthError as e:
             sys.exit('Login failed ({})'.format(e))
 
         self.conv_list = None
         self.user_list = None
 
-        self.client = hangups.Client(cookies)
+    def run(self):
+        policy = asyncio.get_event_loop_policy()
+        self.loop = policy.new_event_loop()
+        policy.set_event_loop(self.loop)
+
+        self.client = hangups.Client(self.cookies)
         self.client.on_connect.add_observer(self.on_connect)
 
-        loop = asyncio.get_event_loop()
-        self.queue = janus.Queue(loop=loop)
+        self.loop.run_until_complete(self.client.connect())
 
-        tasks = [asyncio.Task(self.process_queue()), self.client.connect()]
-        loop.run_until_complete(asyncio.gather(*tasks))
+    #
+    # Threads/asyncio communication
+    #
 
-    @asyncio.coroutine
-    def process_queue(self):
-        while True:
-            message = yield from self.queue.async_q.get()
+    def call_soon_thread_safe(self, message):
+        self.loop.call_soon_threadsafe(self.on_message, message)
+
+    def send_message_to_xmpp(self, message):
+        xmpp_queue.put({'jid': self.jid, 'message': message})
+
+    #
+    # Coroutines
+    #
+
+    def on_message(self, message):
+        print("Message to process in a corouting: ", message)
 
     @asyncio.coroutine
     def on_connect(self):
@@ -57,8 +100,16 @@ class HangupsThread:
         self.user_list, self.conv_list = (
             yield from hangups.build_user_conversation_list(self.client)
         )
-        for user in self.user_list.get_all():
-            print(user.photo_url)
+        user_list_dict = [{
+            'chat_id': user.id_.chat_id,
+            'gaia_id': user.id_.gaia_id,
+            'first_name': user.first_name,
+            'full_name': user.full_name,
+            'is_self': user.is_self,
+            'emails': user.emails._values,
+            'photo_url': user.photo_url
+        } for user in self.user_list.get_all()]
+        self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
         # self.conv_list.on_event.add_observer(self.on_event)
 
 
@@ -227,8 +278,8 @@ class Transport:
                             del userfile[fromstripped]
                             userfile.sync()
                             return
-                        # TODO: connect hangouts here
-                        hobj = {"coucou": "cucu"}
+                        hangups_manager.spawn_thread(fromstripped)
+                        hobj = {}
                         self.userlist[fromstripped] = hobj
                 elif event.getType() == 'unavailable':
                     # Match resources and remove the newly unavailable one
@@ -369,6 +420,24 @@ class Transport:
             time.sleep(5)
             self.xmpp_connect()
 
+    def handle_message(self, message):
+        print("Handling message from hangouts: ", message)
+        hangups_manager.send_message(message['jid'], {'test': 'oui'})
+
+class XMPPQueueThread(threading.Thread):
+    def __init__(self, transport):
+        super().__init__()
+        self.transport = transport
+
+    def run(self):
+        while True:
+            message = xmpp_queue.get()
+            xmpp_lock.acquire()
+            try:
+                self.transport.handle_message(message)
+            finally:
+                xmpp_lock.release()
+
 
 def load_config():
     config_options = {}
@@ -411,10 +480,8 @@ def setup_debugging():
 if __name__ == '__main__':
     setup_debugging()
 
-    # HangupsThread()
-
+    hangups_manager = HangupsManager()
     userfile = shelve.open(config.spoolFile)
-    userfile["coucou"] = "cucu"
 
     logfile = None
     if config.debugFile:
@@ -445,9 +512,15 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
 
+    XMPPQueueThread(transport).start()
+
     while transport.online:
         try:
-            connection.Process(1)
+            xmpp_lock.acquire()
+            try:
+                connection.Process(1)
+            finally:
+                xmpp_lock.release()
         except KeyboardInterrupt:
             _pendingException = sys.exc_info()
             raise _pendingException[0](_pendingException[1]).with_traceback(_pendingException[2])
@@ -457,4 +530,6 @@ if __name__ == '__main__':
             log_error()
         if not connection.isConnected():
             transport.xmpp_disconnect()
+
+    userfile.close()
     connection.disconnect()
