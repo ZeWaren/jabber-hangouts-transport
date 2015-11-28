@@ -18,3 +18,5 @@ saslUsername = ""
 debugFile = ""
 
 dumpProtocol = True
+
+spoolFile = "/var/spool/jabberhangouts/spoolfile"

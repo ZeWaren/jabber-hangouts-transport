@@ -6,6 +6,7 @@ import logging
 import time
 import signal
 import traceback
+import shelve
 
 sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
@@ -13,8 +14,11 @@ from hangups.auth import GoogleAuthError
 import hangups
 import xmpp
 import xmpp.client
+import xmpp.protocol
 from xmpp.browser import Browser
-from xmpp.protocol import Presence
+from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed
+from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO
+from xmpp.simplexml import Node
 
 import config
 
@@ -57,8 +61,9 @@ class HangupsThread:
 class Transport:
     online = 1
 
-    def __init__(self, jabber):
+    def __init__(self, jabber, userfile):
         self.jabber = jabber
+        self.userfile = userfile
 
     def xmpp_connect(self):
         connected = self.jabber.connect((config.mainServer, config.port))
@@ -79,6 +84,9 @@ class Transport:
 
     def register_handlers(self):
         self.jabber.RegisterHandler('presence', self.xmpp_presence)
+        self.jabber.RegisterHandler('message', self.xmpp_message)
+        self.jabber.RegisterHandler('iq',self.xmpp_iq_register_get, typ = 'get', ns=NS_REGISTER)
+        self.jabber.RegisterHandler('iq',self.xmpp_iq_register_set, typ = 'set', ns=NS_REGISTER)
 
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
@@ -97,7 +105,7 @@ class Transport:
                     return dict(
                         ids=[dict(category='gateway', type='hangouts',
                           name=config.discoName)],
-                        features=[NS_VERSION, NS_COMMANDS, NS_PRESENCE])
+                        features=[NS_VERSION, NS_COMMANDS, NS_PRESENCE, NS_REGISTER])
                 if ev_type == 'items':
                     return []
             else:
@@ -129,6 +137,95 @@ class Transport:
             return
         else:
             self.jabber.send(Presence(to=fromjid, frm = to))
+
+    def xmpp_message(self, con, event):
+        ev_type = event.getType()
+        from_jid = event.getFrom()
+        to_jid = event.getTo()
+        if ev_type == 'error':
+            try:
+                raise Exception("Error XMPP message", event, str(event))
+            except Exception as e:
+                logError()
+            return
+
+        m = Message(to=from_jid, frm=to_jid, subject="Penis", body=event.getBody())
+        self.jabber.send(m)
+
+    def xmpp_iq_register_get(self, con, event):
+        if event.getTo() == config.jid:
+            url = ["http://example.com/?oauth=sdfsdfsdfsdfsdf"]
+            auth_token = []
+            fromjid = event.getFrom().getStripped()
+            queryPayload = [Node('instructions', payload = 'Please open this URL in a webbrowser and copy the result code here:')]
+            if fromjid in self.userfile:
+                try:
+                    url = userfile[fromjid]['url']
+                    auth_token = userfile[fromjid]['auth_token']
+                except:
+                    pass
+                queryPayload += [
+                    Node('url', payload=url),
+                    Node('password', payload=auth_token),
+                    Node('registered')]
+            else:
+                queryPayload += [
+                    Node('url', payload=url),
+                    Node('password')]
+            m = event.buildReply('result')
+            m.setQueryNS(NS_REGISTER)
+            m.setQueryPayload(queryPayload)
+            self.jabber.send(m)
+            #Add disco#info check to client requesting for rosterx support
+            i= Iq(to=event.getFrom(), frm=config.jid, typ='get',queryNS=NS_DISCO_INFO)
+            self.jabber.send(i)
+        else:
+            self.jabber.send(Error(event,ERR_BAD_REQUEST))
+        raise NodeProcessed
+
+    def xmpp_iq_register_set(self, con, event):
+        if event.getTo() == config.jid:
+            remove = False
+            url = False
+            auth_token = False
+            fromjid = event.getFrom().getStripped()
+            query = event.getTag('query')
+            if query.getTag('url'):
+                url = query.getTagData('url')
+            if query.getTag('password'):
+                auth_token = query.getTagData('password')
+            if query.getTag('remove'):
+               remove = True
+            if not remove and url and auth_token:
+                if fromjid in self.userfile:
+                    conf = self.userfile[fromjid]
+                else:
+                    conf = {}
+                conf['url']=url
+                conf['auth_token']=auth_token
+                print('Conf: ',conf)
+                self.userfile[fromjid]=conf
+                self.userfile.sync()
+                m=event.buildReply('result')
+                self.jabber.send(m)
+            elif remove and not url and not auth_token:
+                if fromjid in self.userfile:
+                    del self.userfile[fromjid]
+                    self.userfile.sync()
+                    m = event.buildReply('result')
+                    self.jabber.send(m)
+                    m = Presence(to = event.getFrom(), frm = config.jid, typ = 'unsubscribe')
+                    self.jabber.send(m)
+                    m = Presence(to = event.getFrom(), frm = config.jid, typ = 'unsubscribed')
+                    self.jabber.send(m)
+                else:
+                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+            else:
+                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+        else:
+            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+        raise NodeProcessed
+
 
     def xmpp_disconnect(self):
         time.sleep(5)
@@ -176,6 +273,9 @@ if __name__ == '__main__':
 
     # HangupsThread()
 
+    userfile = shelve.open(config.spoolFile)
+    userfile["coucou"] = "cucu"
+
     logfile = None
     if config.debugFile:
         logfile = open(config.debugFile, 'a')
@@ -192,7 +292,7 @@ if __name__ == '__main__':
         sasl = 0
     connection = xmpp.client.Component(config.jid, config.port, debug=debug, sasl=sasl, bind=config.useComponentBinding, route=config.useRouteWrap)
 
-    transport = Transport(connection)
+    transport = Transport(connection, userfile)
     if not transport.xmpp_connect():
         print("Could not connect to server, or password mismatch!")
         sys.exit(1)
