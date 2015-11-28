@@ -2,3 +2,5 @@
 refresh_token.txt
 .idea/*
 __pycache__/*
+*.pyc
+.idea/*
