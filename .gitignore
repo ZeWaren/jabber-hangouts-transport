@@ -1,2 +1,4 @@
 .idea/.name
 refresh_token.txt
+.idea/*
+__pycache__/*
