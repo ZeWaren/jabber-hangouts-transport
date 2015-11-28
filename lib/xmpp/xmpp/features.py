@@ -24,7 +24,7 @@ All these methods takes 'disp' first argument that should be already connected
 (and in most cases already authorised) dispatcher instance.
 """
 
-from protocol import *
+from .protocol import *
 
 REGISTER_DATA_RECEIVED='REGISTER DATA RECEIVED'
 
@@ -99,7 +99,7 @@ def _ReceivedRegInfo(con, resp, agent):
         return
     df=DataForm(typ='form')
     for i in resp.getQueryPayload():
-        if type(i)<>type(iq): pass
+        if type(i)!=type(iq): pass
         elif i.getName()=='instructions': df.addInstructions(i.getData())
         else: df.setField(i.getName()).setValue(i.getData())
     con.Event(NS_REGISTER,REGISTER_DATA_RECEIVED,(agent, df))
@@ -112,7 +112,7 @@ def register(disp,host,info):
         attributes lastErrNode, lastErr and lastErrCode.
     """
     iq=Iq('set',NS_REGISTER,to=host)
-    if type(info)<>type({}): info=info.asDict()
+    if type(info)!=type({}): info=info.asDict()
     for i in info.keys(): iq.setTag('query').setTagData(i,info[i])
     resp=disp.SendAndWaitForResponse(iq)
     if isResultNode(resp): return 1

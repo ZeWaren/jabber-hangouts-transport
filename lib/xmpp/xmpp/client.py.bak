@@ -102,7 +102,7 @@ class CommonClient:
         self.disconnect_handlers=[]
         self.Server=server
         self.Port=port
-        if debug and type(debug)<>list: debug=['always', 'nodebuilder']
+        if debug and type(debug) != list: debug=['always', 'nodebuilder']
         self._DEBUG=Debug.Debug(debug)
         self.DEBUG=self._DEBUG.Show
         self.debug_flags=self._DEBUG.debug_flags
@@ -138,7 +138,7 @@ class CommonClient:
 
     def event(self,eventName,args={}):
         """ Default event handler. To be overriden. """
-        print "Event: ",(eventName,args)
+        print("Event: ",(eventName,args))
 
     def isConnected(self):
         """ Returns connection state. F.e.: None / 'tls' / 'tcp+non_sasl' . """
@@ -199,7 +199,7 @@ class Client(CommonClient):
             If you want to disable tls/ssl support completely, set it to 0.
             Example: connect(('192.168.5.5',5222),{'host':'proxy.my.net','port':8080,'user':'me','password':'secret'})
             Returns '' or 'tcp' or 'tls', depending on the result."""
-        if not CommonClient.connect(self,server,proxy,secure,use_srv,transport) or secure<>None and not secure: return self.connected
+        if not CommonClient.connect(self,server,proxy,secure,use_srv,transport) or secure is not None and not secure: return self.connected
         transports.TLS().PlugIn(self)
         if not self.Dispatcher.Stream._document_attrs.has_key('version') or not self.Dispatcher.Stream._document_attrs['version']=='1.0': return self.connected
         while not self.Dispatcher.Stream.features and self.Process(1): pass      # If we get version 1.0 stream the features tag MUST BE presented

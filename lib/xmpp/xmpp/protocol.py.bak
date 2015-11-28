@@ -381,7 +381,7 @@ class Protocol(Node):
         errtag=self.getTag('error')
         if errtag:
             for tag in errtag.getChildren():
-                if tag.getName()<>'text': return tag.getName()
+                if tag.getName() != 'text': return tag.getName()
             return errtag.getData()
     def getErrorCode(self):
         """ Return the error code. Obsolette. """

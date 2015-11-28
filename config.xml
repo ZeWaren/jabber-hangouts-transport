@@ -1,0 +1,47 @@
+<?xml version="1.0" ?>
+<jabberhangouts>
+    <!-- This file contains options to be configured by the server administrator. -->
+    <!-- Please read through all the options in this file -->
+
+    <!-- The JabberID of the transport -->
+    <jid>hangout.bsdhangups</jid>
+
+    <!-- The name of the transport in the service discovery list. -->
+    <discoName>Google Hangout Transport</discoName>
+
+    <!-- The location of the PID file, relative to the PyIRCt directory -->
+    <!-- Comment out if you do not want a PID file -->
+    <!--<pid>PyMailt.pid</pid>-->
+
+    <!-- The IP address or DNS name of the main Jabber server -->
+    <mainServer>127.0.0.1</mainServer>
+
+    <!-- The JID of the main Jabber server -->
+    <mainServerJID>jabber.bsdhangups</mainServerJID>
+
+    <!-- The TCP port to connect to the Jabber server on (this is the default for Jabberd2) -->
+    <port>5347</port>
+
+    <!-- The authentication token to use when connecting to the Jabber server -->
+    <secret>secret</secret>
+
+    <!-- SASL username used to bind to Jabber server. -->
+    <!-- secret, above, is used for sasl password -->
+    <!--<saslUsername>username-for-jabberd2-connection</saslUsername>-->
+
+    <!-- Use external component binding. -->
+    <!-- This dodges the need to manually configure all jids that talk to this transport. -->
+    <!-- Jabberd2 requires saslUsername and useRouteWrap for this to work. -->
+    <!-- Wildfire as of 2.6.0 requires just this. -->
+    <!--<useComponentBinding/>-->
+
+    <!-- Wrap stanzas in <route> stanza. -->
+    <!-- Jabberd2 requires this for useComponentBinding. -->
+    <useRouteWrap/>
+
+    <!-- The file to log to. Leave this disabled for stdout only -->
+    <!--<debugFile>mailerror.log</debugFile> -->
+
+    <!-- Show the raw data being sent and received from the xmpp and mail servers -->
+    <!--<dumpProtocol/>-->
+</jabberhangouts>

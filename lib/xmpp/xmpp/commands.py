@@ -31,8 +31,8 @@ What it supplies:
     A means of handling requests, by redirection though the command manager.
 """
 
-from protocol import *
-from client import PlugIn
+from .protocol import *
+from .client import PlugIn
 
 class Commands(PlugIn):
     """Commands is an ancestor of PlugIn and can be attached to any session.
@@ -137,7 +137,7 @@ class Commands(PlugIn):
             self._handlers[jid]={}
             self._browser.setDiscoHandler(self._DiscoHandler,node=NS_COMMANDS,jid=jid)
         if self._handlers[jid].has_key(name):
-            raise NameError,'Command Exists'
+            raise (NameError,'Command Exists')
         else:
             self._handlers[jid][name]={'disco':cmddisco,'execute':cmdexecute}
         # Need to add disco stuff here
@@ -150,9 +150,9 @@ class Commands(PlugIn):
         #   Remove item from disco
         #   Remove item from command list
         if not self._handlers.has_key(jid):
-            raise NameError,'Jid not found'
+            raise (NameError,'Jid not found')
         if not self._handlers[jid].has_key(name):
-            raise NameError, 'Command not found'
+            raise (NameError, 'Command not found')
         else:
             #Do disco removal here
             command = self.getCommand(name,jid)['disco']
@@ -165,9 +165,9 @@ class Commands(PlugIn):
         # We must:
         #   Return item that matches this name
         if not self._handlers.has_key(jid):
-            raise NameError,'Jid not found'
+            raise (NameError,'Jid not found')
         elif not self._handlers[jid].has_key(name):
-            raise NameError,'Command not found'
+            raise (NameError,'Command not found')
         else:
             return self._handlers[jid][name]
 

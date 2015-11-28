@@ -19,9 +19,10 @@ Provides library with all Non-SASL and SASL authentication mechanisms.
 Can be used both for client and transport authentication.
 """
 
-from protocol import *
-from client import PlugIn
-import base64,random,dispatcher,re
+from .protocol import *
+from .client import PlugIn
+from . import dispatcher
+import base64,random,re
 
 from hashlib import md5,sha1
 def HH(some): return md5(some).hexdigest()
@@ -62,7 +63,7 @@ class NonSASL(PlugIn):
             seq=query.getTagData('sequence')
             self.DEBUG("Performing zero-k authentication",'ok')
             hash = sha1(sha1(self.password).hexdigest()+token).hexdigest()
-            for foo in xrange(int(seq)): hash = sha1(hash).hexdigest()
+            for foo in range(int(seq)): hash = sha1(hash).hexdigest()
             query.setTagData('hash',hash)
             method='0k'
         else:
@@ -81,7 +82,8 @@ class NonSASL(PlugIn):
     def authComponent(self,owner):
         """ Authenticate component. Send handshake stanza and wait for result. Returns "ok" on success. """
         self.handshake=0
-        owner.send(Node(NS_COMPONENT_ACCEPT+' handshake',payload=[sha1(owner.Dispatcher.Stream._document_attrs['id']+self.password).hexdigest()]))
+        d=owner.Dispatcher.Stream._document_attrs['id']+self.password
+        owner.send(Node(NS_COMPONENT_ACCEPT+' handshake',payload=[sha1(d.encode('UTF-8')).hexdigest()]))
         owner.RegisterHandler('handshake',self.handshakeHandler,xmlns=NS_COMPONENT_ACCEPT)
         while not self.handshake:
             self.DEBUG("waiting on handshake",'notify')
@@ -102,7 +104,7 @@ class SASL(PlugIn):
         self.password=password
 
     def plugin(self,owner):
-        if not self._owner.Dispatcher.Stream._document_attrs.has_key('version'): self.startsasl='not-supported'
+        if not 'version' in self._owner.Dispatcher.Stream._document_attrs: self.startsasl='not-supported'
         elif self._owner.Dispatcher.Stream.features:
             try: self.FeaturesHandler(self._owner.Dispatcher,self._owner.Dispatcher.Stream.features)
             except NodeProcessed: pass
@@ -120,10 +122,10 @@ class SASL(PlugIn):
 
     def plugout(self):
         """ Remove SASL handlers from owner's dispatcher. Used internally. """
-        if self._owner.__dict__.has_key('features'): self._owner.UnregisterHandler('features',self.FeaturesHandler,xmlns=NS_STREAMS)
-        if self._owner.__dict__.has_key('challenge'): self._owner.UnregisterHandler('challenge',self.SASLHandler,xmlns=NS_SASL)
-        if self._owner.__dict__.has_key('failure'): self._owner.UnregisterHandler('failure',self.SASLHandler,xmlns=NS_SASL)
-        if self._owner.__dict__.has_key('success'): self._owner.UnregisterHandler('success',self.SASLHandler,xmlns=NS_SASL)
+        if 'features' in self._owner.__dict__: self._owner.UnregisterHandler('features',self.FeaturesHandler,xmlns=NS_STREAMS)
+        if 'challenge' in self._owner.__dict__: self._owner.UnregisterHandler('challenge',self.SASLHandler,xmlns=NS_SASL)
+        if 'failure' in self._owner.__dict__: self._owner.UnregisterHandler('failure',self.SASLHandler,xmlns=NS_SASL)
+        if 'success' in self._owner.__dict__: self._owner.UnregisterHandler('success',self.SASLHandler,xmlns=NS_SASL)
 
     def FeaturesHandler(self,conn,feats):
         """ Used to determine if server supports SASL auth. Used internally. """
@@ -154,7 +156,7 @@ class SASL(PlugIn):
 
     def SASLHandler(self,conn,challenge):
         """ Perform next SASL auth step. Used internally. """
-        if challenge.getNamespace()<>NS_SASL: return
+        if challenge.getNamespace() != NS_SASL: return
         if challenge.getName()=='failure':
             self.startsasl='failure'
             try: reason=challenge.getChildren()[0]
@@ -179,7 +181,7 @@ class SASL(PlugIn):
             key,value=[x.strip() for x in pair.split('=', 1)]
             if value[:1]=='"' and value[-1:]=='"': value=value[1:-1]
             chal[key]=value
-        if chal.has_key('qop') and 'auth' in [x.strip() for x in chal['qop'].split(',')]:
+        if 'qop' in chal and 'auth' in [x.strip() for x in chal['qop'].split(',')]:
             resp={}
             resp['username']=self.username
             resp['realm']=self._owner.Server
@@ -203,7 +205,7 @@ class SASL(PlugIn):
 ########################################3333
             node=Node('response',attrs={'xmlns':NS_SASL},payload=[base64.encodestring(sasl_data[:-1]).replace('\r','').replace('\n','')])
             self._owner.send(node.__str__())
-        elif chal.has_key('rspauth'): self._owner.send(Node('response',attrs={'xmlns':NS_SASL}).__str__())
+        elif 'rspauth' in chal: self._owner.send(Node('response',attrs={'xmlns':NS_SASL}).__str__())
         else:
             self.startsasl='failure'
             self.DEBUG('Failed SASL authentification: unknown challenge','error')

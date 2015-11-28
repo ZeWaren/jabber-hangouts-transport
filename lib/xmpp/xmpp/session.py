@@ -23,7 +23,7 @@ one client for each connection. Is is specifically important when you are
 writing the server.
 """
 
-from protocol import *
+from .protocol import *
 
 # Transport-level flags
 SOCKET_UNCONNECTED  =0
@@ -85,7 +85,7 @@ class Session:
         self.DEBUG=owner.Dispatcher.DEBUG
         self._expected={}
         self._owner=owner
-        if self.TYP=='server': self.ID=`random.random()`[2:]
+        if self.TYP=='server': self.ID=repr(random.random())[2:]
         else: self.ID=None
 
         self.sendbuffer=''
