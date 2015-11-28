@@ -24,7 +24,8 @@ import config
 
 _log = logging.getLogger(__name__)
 
-NODE_ROSTER='roster'
+NODE_ROSTER = 'roster'
+
 
 class HangupsThread:
     def __init__(self):
@@ -60,6 +61,7 @@ class HangupsThread:
             print(user.photo_url)
         # self.conv_list.on_event.add_observer(self.on_event)
 
+
 class Transport:
     online = 1
     userlist = {}
@@ -68,6 +70,7 @@ class Transport:
     def __init__(self, jabber, userfile):
         self.jabber = jabber
         self.userfile = userfile
+        self.disco = None
 
     def xmpp_connect(self):
         connected = self.jabber.connect((config.mainServer, config.port))
@@ -89,9 +92,9 @@ class Transport:
     def register_handlers(self):
         self.jabber.RegisterHandler('presence', self.xmpp_presence)
         self.jabber.RegisterHandler('message', self.xmpp_message)
-        self.jabber.RegisterHandler('iq',self.xmpp_iq_discoinfo_results,typ = 'result', ns=NS_DISCO_INFO)
-        self.jabber.RegisterHandler('iq',self.xmpp_iq_register_get, typ = 'get', ns=NS_REGISTER)
-        self.jabber.RegisterHandler('iq',self.xmpp_iq_register_set, typ = 'set', ns=NS_REGISTER)
+        self.jabber.RegisterHandler('iq', self.xmpp_iq_discoinfo_results, typ='result', ns=NS_DISCO_INFO)
+        self.jabber.RegisterHandler('iq', self.xmpp_iq_register_get, typ='get', ns=NS_REGISTER)
+        self.jabber.RegisterHandler('iq', self.xmpp_iq_register_set, typ='set', ns=NS_REGISTER)
 
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
@@ -104,28 +107,28 @@ class Transport:
         fromstripped = event.getFrom().getStripped()
         to = event.getTo()
         node = event.getQuerynode()
-        #Type is either 'info' or 'items'
+        # Type is either 'info' or 'items'
         if to == config.jid:
-            if node == None:
+            if node is None:
                 if ev_type == 'info':
                     return dict(
-                        ids=[dict(category='gateway', type='hangouts',
-                          name=config.discoName)],
+                        ids=[dict(category='gateway', type='hangouts', name=config.discoName)],
                         features=[NS_VERSION, NS_COMMANDS, NS_PRESENCE, NS_REGISTER, NS_CHATSTATES])
                 if ev_type == 'items':
-                    list = [
+                    alist = [
                         {'node': NODE_ROSTER, 'name': config.discoName + ' Roster', 'jid': config.jid}
                     ]
-                    return list
+                    return alist
             elif node == NODE_ROSTER:
                 if ev_type == 'info':
-                    return {'ids':[],'features':[]}
+                    return {'ids': [], 'features': []}
                 if ev_type == 'items':
-                    list = []
-                    list.append({'jid':'test1@hangups.bsdhangup.zwm', 'name':'Jambon'})
-                    list.append({'jid':'test2@hangups.bsdhangup.zwm', 'name':'Poulet'})
-                    list.append({'jid':'test3@hangups.bsdhangup.zwm', 'name':'Saucisse'})
-                    return list
+                    alist = [
+                        {'jid': 'test1@hangups.bsdhangup.zwm', 'name': 'Jambon'},
+                        {'jid': 'test2@hangups.bsdhangup.zwm', 'name': 'Poulet'},
+                        {'jid': 'test3@hangups.bsdhangup.zwm', 'name': 'Saucisse'}
+                    ]
+                    return alist
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
@@ -133,7 +136,7 @@ class Transport:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['MALFORMED_JID']))
             raise NodeProcessed
 
-    #XMPP Handlers
+    # XMPP Handlers
     def xmpp_presence(self, con, event):
         hobj = None
         fromjid = event.getFrom()
@@ -145,34 +148,44 @@ class Transport:
                         hobj = self.userlist[fromstripped]
                         if event.getTo() == config.jid:
                             conf = userfile[fromstripped]
-                            conf['subscribed']=True
-                            userfile[fromstripped]=conf
+                            conf['subscribed'] = True
+                            userfile[fromstripped] = conf
                             userfile.sync()
 
-                            #For each new user check if rosterx is adversited then do the rosterx message, else send a truckload of subscribes.
-                            #Part 1, parse the features out of the disco result
+                            # For each new user check if rosterx is adversited then do the rosterx message, else send a
+                            # truckload of subscribes.
+                            # Part 1, parse the features out of the disco result
                             features = []
                             if event.getFrom().getStripped() in self.discoresults:
                                 discoresult = self.discoresults[event.getFrom().getStripped().encode('utf8')]
-                                if discoresult.getTag('query').getTag('feature'): features.append(discoresult.getTag('query').getAttr('var'))
-                            #Part 2, make the rosterX message
+                                if discoresult.getTag('query').getTag('feature'):
+                                    features.append(discoresult.getTag('query').getAttr('var'))
+                            # Part 2, make the rosterX message
                             if NS_ROSTERX in features:
-                                m = Message(to = fromjid, frm = config.jid, subject= 'Yahoo Roster Items', body = 'Items from Yahoo Roster')
-                                p = m.setTag('x',namespace = NS_ROSTERX)
+                                m = Message(to=fromjid, frm=config.jid, subject='Yahoo Roster Items',
+                                            body='Items from Yahoo Roster')
+                                p = m.setTag('x', namespace=NS_ROSTERX)
                                 p.addChild(
                                     name='item',
-                                    attrs={'jid':'%s@%s'%('test1',config.jid),'name': 'Jambon', 'action':'add'}
+                                    attrs={'jid': '%s@%s' % ('test1', config.jid), 'name': 'Jambon', 'action': 'add'}
                                 )
                                 p.addChild(
                                     name='item',
-                                    attrs={'jid':'%s@%s'%('test2',config.jid),'name': 'Poulet', 'action':'add'}
+                                    attrs={'jid': '%s@%s' % ('test2', config.jid), 'name': 'Poulet', 'action': 'add'}
                                 )
                                 self.jabber.send(m)
-                                if config.dumpProtocol: print(m)
+                                if config.dumpProtocol:
+                                    print(m)
                             else:
-                                self.jabber.send(Presence(frm='%s@%s'%('test1',config.jid),to = fromjid, typ='subscribe', status='Hangouts contact'))
-                                self.jabber.send(Presence(frm='%s@%s'%('test2',config.jid),to = fromjid, typ='subscribe', status='Hangouts contact'))
-                            m = Presence(to = fromjid, frm = config.jid)
+                                self.jabber.send(Presence(frm='%s@%s' % ('test1', config.jid),
+                                                          to=fromjid,
+                                                          typ='subscribe',
+                                                          status='Hangouts contact'))
+                                self.jabber.send(Presence(frm='%s@%s' % ('test2', config.jid),
+                                                          to=fromjid,
+                                                          typ='subscribe',
+                                                          status='Hangouts contact'))
+                            m = Presence(to=fromjid, frm=config.jid)
                             self.jabber.send(m)
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
@@ -182,32 +195,35 @@ class Transport:
                         hobj = self.userlist[fromstripped]
                         if event.getTo() == config.jid:
                             conf = userfile[fromstripped]
-                            conf['usubscribed']=True
-                            userfile[fromstripped]=conf
+                            conf['usubscribed'] = True
+                            userfile[fromstripped] = conf
                             userfile.sync()
-                            m = Presence(to = fromjid, frm = config.jid, typ = 'subscribed')
+                            m = Presence(to=fromjid, frm=config.jid, typ='subscribed')
                             self.jabber.send(m)
                         else:
-                            #add new user case.
-                            if event.getStatus() != None:
-                                if config.dumpProtocol: print(event.getStatus().encode('utf-8'))
+                            # add new user case.
+                            if event.getStatus() is not None:
+                                if config.dumpProtocol:
+                                    print(event.getStatus().encode('utf-8'))
                                 status = event.getStatus()
                             else:
                                 status = ''
-                            self.jabber.send(Presence(frm=event.getTo(), to = event.getFrom(), typ = 'subscribed'))
+                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='subscribed'))
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
                 elif event.getType() == 'unsubscribed':
                     # should do something more elegant here
                     pass
-                elif event.getType() == None or event.getType() == 'available' or event.getType() == 'invisible':
+                elif event.getType() is not None or event.getType() == 'available' or event.getType() == 'invisible':
                     if fromstripped in self.userlist:
                         self.xmpp_presence_do_update(event, fromstripped)
                     else:
                         try:
                             conf = userfile[fromstripped]
                         except:
-                            self.jabber.send(Message(to=fromstripped,subject='Transport Configuration Error',body='The transport has found that your configuration could not be loaded. Please re-register with the transport'))
+                            self.jabber.send(Message(to=fromstripped,
+                                                     subject='Transport Configuration Error',
+                                                     body='The transport has found that your configuration could not be loaded. Please re-register with the transport'))
                             del userfile[fromstripped]
                             userfile.sync()
                             return
@@ -217,10 +233,10 @@ class Transport:
                 elif event.getType() == 'unavailable':
                     # Match resources and remove the newly unavailable one
                     if fromstripped in self.userlist:
-                        hobj=self.userlist[fromstripped]
-                        #print 'Resource: ', event.getFrom().getResource(), "To Node: ",yid
+                        hobj = self.userlist[fromstripped]
+                        # print 'Resource: ', event.getFrom().getResource(), "To Node: ",yid
                     else:
-                        self.jabber.send(Presence(to=fromjid,frm = config.jid, typ='unavailable'))
+                        self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
         else:
             # Need to add auto-unsubscribe on probe events here.
             if event.getType() == 'probe':
@@ -229,7 +245,7 @@ class Transport:
             elif event.getType() == 'unsubscribed':
                 pass
             elif event.getType() == 'unsubscribe':
-                self.jabber.send(Presence(frm=event.getTo(),to=event.getFrom(),typ='unsubscribed'))
+                self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='unsubscribed'))
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
 
@@ -242,13 +258,13 @@ class Transport:
         to_jid = event.getTo()
         fromstripped = from_jid.getStripped()
         print("Sending from ", from_jid, " to ", to_jid, ": ", event.getBody())
-        if event.getTo().getNode() != None:
+        if event.getTo().getNode() is not None:
             if fromstripped in self.userlist:
                 hobject = self.userlist[fromstripped]
                 if event.getTo().getDomain() == config.jid:
                     resource = 'messenger'
                     if resource == 'messenger':
-                        if event.getType() == None or event.getType() == 'normal':
+                        if event.getType() is None or event.getType() == 'normal':
                             print("Send!")
                         elif event.getType() == 'chat':
                             print("Send!")
@@ -261,7 +277,7 @@ class Transport:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
 
     def xmpp_iq_discoinfo_results(self, con, event):
-        self.discoresults[event.getFrom().getStripped().encode('utf8')]=event
+        self.discoresults[event.getFrom().getStripped().encode('utf8')] = event
         raise NodeProcessed
 
     def xmpp_iq_register_get(self, con, event):
@@ -269,27 +285,28 @@ class Transport:
             url = ["http://example.com/?oauth=sdfsdfsdfsdfsdf"]
             auth_token = []
             fromjid = event.getFrom().getStripped()
-            queryPayload = [Node('instructions', payload = 'Please open this URL in a webbrowser and copy the result code here:')]
+            query_payload = [Node('instructions',
+                                 payload='Please open this URL in a webbrowser and copy the result code here:')]
             if fromjid in self.userfile:
                 try:
                     url = userfile[fromjid]['url']
                     auth_token = userfile[fromjid]['auth_token']
                 except:
                     pass
-                queryPayload += [
+                query_payload += [
                     Node('url', payload=url),
                     Node('password', payload=auth_token),
                     Node('registered')]
             else:
-                queryPayload += [
+                query_payload += [
                     Node('url', payload=url),
                     Node('password')]
             m = event.buildReply('result')
             m.setQueryNS(NS_REGISTER)
-            m.setQueryPayload(queryPayload)
+            m.setQueryPayload(query_payload)
             self.jabber.send(m)
-            #Add disco#info check to client requesting for rosterx support
-            i= Iq(to=event.getFrom(), frm=config.jid, typ='get',queryNS=NS_DISCO_INFO)
+            # Add disco#info check to client requesting for rosterx support
+            i = Iq(to=event.getFrom(), frm=config.jid, typ='get', queryNS=NS_DISCO_INFO)
             self.jabber.send(i)
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
@@ -307,20 +324,20 @@ class Transport:
             if query.getTag('password'):
                 auth_token = query.getTagData('password')
             if query.getTag('remove'):
-               remove = True
+                remove = True
             if not remove and url and auth_token:
                 if fromjid in self.userfile:
                     conf = self.userfile[fromjid]
                 else:
                     conf = {}
-                conf['url']=url
-                conf['auth_token']=auth_token
-                print('Conf: ',conf)
-                self.userfile[fromjid]=conf
+                conf['url'] = url
+                conf['auth_token'] = auth_token
+                print('Conf: ', conf)
+                self.userfile[fromjid] = conf
                 self.userfile.sync()
-                m=event.buildReply('result')
+                m = event.buildReply('result')
                 self.jabber.send(m)
-                self.userlist[fromjid] = {"coucou":"cucu"}
+                self.userlist[fromjid] = {"coucou": "cucu"}
                 # TODO: Connect Hangouts here
             elif remove and not url and not auth_token:
                 if fromjid in self.userlist:
@@ -330,9 +347,9 @@ class Transport:
                     self.userfile.sync()
                     m = event.buildReply('result')
                     self.jabber.send(m)
-                    m = Presence(to = event.getFrom(), frm = config.jid, typ = 'unsubscribe')
+                    m = Presence(to=event.getFrom(), frm=config.jid, typ='unsubscribe')
                     self.jabber.send(m)
-                    m = Presence(to = event.getFrom(), frm = config.jid, typ = 'unsubscribed')
+                    m = Presence(to=event.getFrom(), frm=config.jid, typ='unsubscribed')
                     self.jabber.send(m)
                 else:
                     self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
@@ -342,10 +359,9 @@ class Transport:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
         raise NodeProcessed
 
-
     def xmpp_disconnect(self):
         for each in self.userlist.keys():
-            hobj =self.userlist[each]
+            hobj = self.userlist[each]
             del self.userlist[hobj.fromjid]
             del hobj
         time.sleep(5)
@@ -353,34 +369,38 @@ class Transport:
             time.sleep(5)
             self.xmpp_connect()
 
-def loadConfig():
-    configOptions = {}
+
+def load_config():
+    config_options = {}
     for configFile in config.configFiles:
         if os.path.isfile(configFile):
-            xmlconfig.reloadConfig(configFile, configOptions)
+            xmlconfig.reloadConfig(configFile, config_options)
             config.configFile = configFile
             return
     sys.stderr.write(("Configuration file not found. "
-      "You need to create a config file and put it "
-      " in one of these locations:\n ")
-      + "\n ".join(config.configFiles))
+                      "You need to create a config file and put it "
+                      " in one of these locations:\n ") + "\n ".join(config.configFiles))
     sys.exit(1)
 
-def sigHandler(signum, frame):
+
+def sig_handler(signum, frame):
     transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)
     if config.dumpProtocol:
         print('Signal handler called with signal %s' % (signum,))
     transport.online = 0
 
 version = 'unknown'
-def logError():
+
+
+def log_error():
     err = '%s - %s\n' % (time.strftime('%a %d %b %Y %H:%M:%S'), version)
-    if logfile != None:
+    if logfile is not None:
         logfile.write(err)
         traceback.print_exc(file=logfile)
         logfile.flush()
     sys.stderr.write(err)
     traceback.print_exc()
+
 
 def setup_debugging():
     sys.path.append('/root/pycharm-debug-py3k.egg')
@@ -410,15 +430,20 @@ if __name__ == '__main__':
     else:
         config.saslUsername = config.jid
         sasl = 0
-    connection = xmpp.client.Component(config.jid, config.port, debug=debug, sasl=sasl, bind=config.useComponentBinding, route=config.useRouteWrap)
+    connection = xmpp.client.Component(config.jid,
+                                       config.port,
+                                       debug=debug,
+                                       sasl=sasl,
+                                       bind=config.useComponentBinding,
+                                       route=config.useRouteWrap)
 
     transport = Transport(connection, userfile)
     if not transport.xmpp_connect():
         print("Could not connect to server, or password mismatch!")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, sigHandler)
-    signal.signal(signal.SIGTERM, sigHandler)
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
 
     while transport.online:
         try:
@@ -429,7 +454,7 @@ if __name__ == '__main__':
         except IOError:
             transport.xmpp_disconnect()
         except:
-            logError()
+            log_error()
         if not connection.isConnected():
             transport.xmpp_disconnect()
     connection.disconnect()
