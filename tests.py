@@ -7,6 +7,8 @@ import traceback
 import shelve
 import threading
 from multiprocessing import Queue, Lock
+import urllib.request
+import base64
 
 sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
@@ -16,7 +18,7 @@ import xmpp.client
 import xmpp.protocol
 from xmpp.browser import Browser
 from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed
-from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX
+from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR
 from xmpp.simplexml import Node
 import config
 from jh_hangups import HangupsManager, hangups_manager
@@ -24,6 +26,7 @@ from jh_hangups import HangupsManager, hangups_manager
 _log = logging.getLogger(__name__)
 
 NODE_ROSTER = 'roster'
+NODE_VCARDUPDATE='vcard-temp:x:update x'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
@@ -61,6 +64,7 @@ class Transport:
         self.jabber.RegisterHandler('iq', self.xmpp_iq_discoinfo_results, typ='result', ns=NS_DISCO_INFO)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_get, typ='get', ns=NS_REGISTER)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_set, typ='set', ns=NS_REGISTER)
+        self.jabber.RegisterHandler('iq',self.xmpp_iq_vcard, typ = 'get', ns=NS_VCARD)
 
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
@@ -89,15 +93,32 @@ class Transport:
                 if ev_type == 'info':
                     return {'ids': [], 'features': []}
                 if ev_type == 'items':
-                    alist = [
-                        {'jid': 'test1@hangups.bsdhangup.zwm', 'name': 'Jambon'},
-                        {'jid': 'test2@hangups.bsdhangup.zwm', 'name': 'Poulet'},
-                        {'jid': 'test3@hangups.bsdhangup.zwm', 'name': 'Saucisse'}
-                    ]
+                    alist = []
+                    if fromstripped in self.userlist:
+                        for user in self.userlist[fromstripped]['user_list']:
+                            alist.append({'jid':'%s@%s' %(user, config.jid),
+                                          'name': self.userlist[fromstripped]['user_list'][user]['full_name']})
                     return alist
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
+        elif to.getDomain() == config.jid:
+            if fromstripped in self.userlist:
+                gaia_id = event.getTo().getNode()
+                if type == 'info':
+                    if gaia_id in self.userlist[fromstripped]['user_list']:
+                        features = [NS_VCARD,NS_VERSION,NS_CHATSTATES]
+                        return {'ids':[{'category': 'client',
+                                        'type':'hangouts',
+                                        'name': self.userlist[fromstripped]['user_list'][gaia_id]['full_name']}],
+                                'features':features}
+                    else:
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+                if type == 'items':
+                    if gaia_id in self.userlist[fromstripped]['user_list']:
+                        return []
+            else:
+                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['MALFORMED_JID']))
             raise NodeProcessed
@@ -131,26 +152,20 @@ class Transport:
                                 m = Message(to=fromjid, frm=config.jid, subject='Yahoo Roster Items',
                                             body='Items from Yahoo Roster')
                                 p = m.setTag('x', namespace=NS_ROSTERX)
-                                p.addChild(
-                                    name='item',
-                                    attrs={'jid': '%s@%s' % ('test1', config.jid), 'name': 'Jambon', 'action': 'add'}
-                                )
-                                p.addChild(
-                                    name='item',
-                                    attrs={'jid': '%s@%s' % ('test2', config.jid), 'name': 'Poulet', 'action': 'add'}
-                                )
+                                for user in hobj['user_list']:
+                                    p.addChild(
+                                        name='item',
+                                        attrs={'jid': '%s@%s' % (user, config.jid),
+                                               'name': hobj['user_list']['full_name'],
+                                               'action': 'add'})
                                 self.jabber.send(m)
                                 if config.dumpProtocol:
                                     print(m)
                             else:
-                                self.jabber.send(Presence(frm='%s@%s' % ('test1', config.jid),
-                                                          to=fromjid,
-                                                          typ='subscribe',
-                                                          status='Hangouts contact'))
-                                self.jabber.send(Presence(frm='%s@%s' % ('test2', config.jid),
-                                                          to=fromjid,
-                                                          typ='subscribe',
-                                                          status='Hangouts contact'))
+                                for user in hobj['user_list']:
+                                    self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
+                                                              to=fromjid,
+                                                              typ='subscribe'))
                             m = Presence(to=fromjid, frm=config.jid)
                             self.jabber.send(m)
                     else:
@@ -246,6 +261,45 @@ class Transport:
 
     def xmpp_iq_discoinfo_results(self, con, event):
         self.discoresults[event.getFrom().getStripped().encode('utf8')] = event
+        raise NodeProcessed
+
+    def xmpp_iq_vcard(self, con, event):
+        fromjid = event.getFrom()
+        fromstripped = fromjid.getStripped()
+        if fromstripped in userfile:
+            if event.getTo().getDomain() == config.jid:
+                nick = "Hangout User"
+                gaia_id = event.getTo().getNode()
+                if fromstripped in self.userlist:
+                    if gaia_id in self.userlist[fromstripped]['user_list']:
+                        nick = self.userlist[fromstripped]['user_list'][gaia_id]['full_name']
+
+                m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
+                m.setID(event.getID())
+                v = m.addChild(name='vCard', namespace=NS_VCARD)
+                v.setTagData(tag='FN', val=nick)
+                v.setTagData(tag='NICKNAME', val=nick)
+                if self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'] != '':
+                    p = v.addChild(name='PHOTO')
+                    p.setTagData(tag='TYPE', val='image/jpeg')
+                    photo = download_url(self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'])
+                    p.setTagData(tag='BINVAL',
+                                 val=base64.b64encode(photo).decode())
+                if len(self.userlist[fromstripped]['user_list'][gaia_id]['phones']) > 0:
+                    p = v.addChild(name='TEL')
+                    p.addChild(name='HOME')
+                    p.addChild(name='VOICE')
+                    p.addChild(name='NUMBER', payload=self.userlist[fromstripped]['user_list'][gaia_id]['phones'][0])
+                if len(self.userlist[fromstripped]['user_list'][gaia_id]['emails']) > 0:
+                    p = v.addChild(name='EMAIL')
+                    p.addChild(name='INTERNET')
+                    p.addChild(name='USERID', payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
+                self.jabber.send(m)
+            else:
+                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
+                raise NodeProcessed
+        else:
+            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
         raise NodeProcessed
 
     def xmpp_iq_register_get(self, con, event):
@@ -347,12 +401,16 @@ class Transport:
             return
 
         if message['what'] == 'user_list':
+            hobj = self.userlist[fromjid]
+            hobj['user_list'] = message['user_list']
             for user_id in message['user_list']:
                 user = message['user_list'][user_id]
-                self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                p = Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
                                           to=fromjid,
                                           typ='subscribe',
-                                          status='Hangouts contact'))
+                                          status='Hangouts contact')
+                p.addChild(node=Node(NODE_VCARDUPDATE, payload=[Node('nickname', payload=user['full_name'])]))
+                self.jabber.send(p)
                 if user['status'] == 'away':
                     self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
                                               to=fromjid,
@@ -397,6 +455,12 @@ def load_config():
                       " in one of these locations:\n ") + "\n ".join(config.configFiles))
     sys.exit(1)
 
+def download_url(url):
+    if not url.startswith('http'):
+        url = 'http:' + url
+    response = urllib.request.urlopen(url)
+    data = response.read()
+    return data
 
 def sig_handler(signum, frame):
     transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)

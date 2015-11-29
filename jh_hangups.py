@@ -131,7 +131,8 @@ class HangupsThread(threading.Thread):
                 'full_name': user.full_name,
                 'is_self': user.is_self,
                 'emails': user.emails._values,
+                'phones': user.phones._values,
                 'photo_url': user.photo_url,
-                'status': status
+                'status': status,
             }
         self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})

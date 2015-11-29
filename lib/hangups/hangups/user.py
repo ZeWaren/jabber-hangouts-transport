@@ -21,7 +21,7 @@ class User(object):
     first_name from the full_name, or setting both to DEFAULT_NAME.
     """
 
-    def __init__(self, user_id, full_name, first_name, photo_url, emails,
+    def __init__(self, user_id, full_name, first_name, photo_url, emails, phones,
                  is_self, presence):
         """Initialize a User."""
         self.id_ = user_id
@@ -30,6 +30,7 @@ class User(object):
                            else self.full_name.split()[0])
         self.photo_url = photo_url
         self.emails = emails
+        self.phones = phones
         self.is_self = is_self
         self.presence = presence
 
@@ -52,6 +53,7 @@ class User(object):
                     entity.properties.first_name,
                     entity.properties.photo_url,
                     entity.properties.email,
+                    entity.properties.phone,
                     (self_user_id == user_id) or (self_user_id is None),
                     presence)
 
@@ -63,7 +65,7 @@ class User(object):
         """
         user_id = UserID(chat_id=conv_part_data.id.chat_id,
                          gaia_id=conv_part_data.id.gaia_id)
-        return User(user_id, conv_part_data.fallback_name, None, None, [],
+        return User(user_id, conv_part_data.fallback_name, None, None, [], [],
                     (self_user_id == user_id) or (self_user_id is None), None)
 
     def set_presence(self, pb2_presence):
@@ -112,7 +114,7 @@ class UserList(object):
         except KeyError:
             logger.warning('UserList returning unknown User for UserID {}'
                            .format(user_id))
-            return User(user_id, DEFAULT_NAME, None, None, [], False, None)
+            return User(user_id, DEFAULT_NAME, None, None, [], [], False, None)
 
     def get_all(self):
         """Returns all the users known"""
