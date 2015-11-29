@@ -356,14 +356,17 @@ class Transport:
                 if user['status'] == 'away':
                     self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
                                               to=fromjid,
-                                              show='xa'))
-                elif user['status'] == 'online':
-                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
-                                              to=fromjid))
+                                              show='xa',
+                                              status=user['full_name']))
                 elif user['status'] == 'online':
                     self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
                                               to=fromjid,
-                                              typ='unavailable'))
+                                              status=user['full_name']))
+                elif user['status'] == 'online':
+                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                                              to=fromjid,
+                                              typ='unavailable',
+                                              status=user['full_name']))
         else:
             hangups_manager.send_message(message['jid'], {'what': 'test'})
 
