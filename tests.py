@@ -1,5 +1,4 @@
 import sys
-import asyncio
 import os
 import logging
 import time
@@ -11,8 +10,7 @@ from multiprocessing import Queue, Lock
 
 sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
-from hangups.auth import GoogleAuthError
-import hangups
+
 import xmpp
 import xmpp.client
 import xmpp.protocol
@@ -21,6 +19,7 @@ from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed
 from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX
 from xmpp.simplexml import Node
 import config
+from jh_hangups import HangupsManager, hangups_manager
 
 _log = logging.getLogger(__name__)
 
@@ -28,90 +27,6 @@ NODE_ROSTER = 'roster'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
-hangups_manager = None
-
-
-class HangupsManager:
-    hangouts_threads = {}
-
-    def spawn_thread(self, jid):
-        thread = HangupsThread(jid)
-        self.hangouts_threads[jid] = thread
-        thread.start()
-
-    def get_thread(self, jid):
-        if not jid in self.hangouts_threads:
-            return None
-        return self.hangouts_threads[jid]
-
-    def remove_thread(self, jid):
-        if jid in self.hangouts_threads:
-            del self.hangouts_threads[jid]
-
-    def send_message(self, jid, message):
-        thread = self.get_thread(jid)
-        if thread is not None:
-            thread.call_soon_thread_safe(message)
-
-class HangupsThread(threading.Thread):
-    def __init__(self, jid):
-        super().__init__()
-
-        self.jid = jid
-
-        try:
-            self.cookies = hangups.auth.get_auth_stdin('refresh_token.txt')
-        except hangups.GoogleAuthError as e:
-            sys.exit('Login failed ({})'.format(e))
-
-        self.conv_list = None
-        self.user_list = None
-
-    def run(self):
-        policy = asyncio.get_event_loop_policy()
-        self.loop = policy.new_event_loop()
-        policy.set_event_loop(self.loop)
-
-        self.client = hangups.Client(self.cookies)
-        self.client.on_connect.add_observer(self.on_connect)
-
-        self.loop.run_until_complete(self.client.connect())
-
-    #
-    # Threads/asyncio communication
-    #
-
-    def call_soon_thread_safe(self, message):
-        self.loop.call_soon_threadsafe(self.on_message, message)
-
-    def send_message_to_xmpp(self, message):
-        xmpp_queue.put({'jid': self.jid, 'message': message})
-
-    #
-    # Coroutines
-    #
-
-    def on_message(self, message):
-        print("Message to process in a corouting: ", message)
-
-    @asyncio.coroutine
-    def on_connect(self):
-        """Handle connecting for the first time."""
-        self.user_list, self.conv_list = (
-            yield from hangups.build_user_conversation_list(self.client)
-        )
-        user_list_dict = [{
-            'chat_id': user.id_.chat_id,
-            'gaia_id': user.id_.gaia_id,
-            'first_name': user.first_name,
-            'full_name': user.full_name,
-            'is_self': user.is_self,
-            'emails': user.emails._values,
-            'photo_url': user.photo_url
-        } for user in self.user_list.get_all()]
-        self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
-        # self.conv_list.on_event.add_observer(self.on_event)
-
 
 class Transport:
     online = 1
@@ -265,7 +180,7 @@ class Transport:
                 elif event.getType() == 'unsubscribed':
                     # should do something more elegant here
                     pass
-                elif event.getType() is not None or event.getType() == 'available' or event.getType() == 'invisible':
+                elif event.getType() is None or event.getType() == 'available' or event.getType() == 'invisible':
                     if fromstripped in self.userlist:
                         self.xmpp_presence_do_update(event, fromstripped)
                     else:
@@ -278,14 +193,16 @@ class Transport:
                             del userfile[fromstripped]
                             userfile.sync()
                             return
-                        hangups_manager.spawn_thread(fromstripped)
-                        hobj = {}
+                        hangups_manager.spawn_thread(fromstripped, xmpp_queue)
+                        hobj = {'user_list': {}}
                         self.userlist[fromstripped] = hobj
                 elif event.getType() == 'unavailable':
                     # Match resources and remove the newly unavailable one
                     if fromstripped in self.userlist:
+                        hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
                         hobj = self.userlist[fromstripped]
-                        # print 'Resource: ', event.getFrom().getResource(), "To Node: ",yid
+                        del self.userlist[fromstripped]
+                        del hobj
                     else:
                         self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
         else:
@@ -301,7 +218,7 @@ class Transport:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
 
     def xmpp_presence_do_update(self, event, fromstripped):
-        pass
+        hangups_manager.send_message(fromstripped, {'what': 'set_presence', 'type': event.getType(), 'show': event.getShow()})
 
     def xmpp_message(self, con, event):
         ev_type = event.getType()
@@ -388,7 +305,7 @@ class Transport:
                 self.userfile.sync()
                 m = event.buildReply('result')
                 self.jabber.send(m)
-                self.userlist[fromjid] = {"coucou": "cucu"}
+                self.userlist[fromjid] = {}
                 # TODO: Connect Hangouts here
             elif remove and not url and not auth_token:
                 if fromjid in self.userlist:
@@ -411,9 +328,11 @@ class Transport:
         raise NodeProcessed
 
     def xmpp_disconnect(self):
-        for each in self.userlist.keys():
-            hobj = self.userlist[each]
-            del self.userlist[hobj.fromjid]
+        for jid in self.userlist.keys():
+            hangups_manager.send_message(jid, {'what': 'disconnect'})
+            hangups_manager.remove_thread(jid)
+            hobj = self.userlist[jid]
+            del self.userlist[jid]
             del hobj
         time.sleep(5)
         if not self.jabber.reconnectAndReauth():
@@ -422,7 +341,31 @@ class Transport:
 
     def handle_message(self, message):
         print("Handling message from hangouts: ", message)
-        hangups_manager.send_message(message['jid'], {'test': 'oui'})
+
+        fromjid = message['jid']
+        if not fromjid in self.userlist:
+            return
+
+        if message['what'] == 'user_list':
+            for user_id in message['user_list']:
+                user = message['user_list'][user_id]
+                self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                                          to=fromjid,
+                                          typ='subscribe',
+                                          status='Hangouts contact'))
+                if user['status'] == 'away':
+                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                                              to=fromjid,
+                                              show='xa'))
+                elif user['status'] == 'online':
+                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                                              to=fromjid))
+                elif user['status'] == 'online':
+                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
+                                              to=fromjid,
+                                              typ='unavailable'))
+        else:
+            hangups_manager.send_message(message['jid'], {'what': 'test'})
 
 class XMPPQueueThread(threading.Thread):
     def __init__(self, transport):
