@@ -78,6 +78,11 @@ class User(object):
                                      tablet=pb2_presence.device_status.tablet),
                             mood_setting=MoodSetting(mood_message=pb2_presence.mood_setting.mood_message.mood_content))
 
+    def get_mood_message(self):
+        if self.presence is None:
+            return ""
+        return "".join([segment.text for segment in self.presence.mood_setting.mood_message.segment._values])
+
 class UserList(object):
 
     """Collection of User instances."""

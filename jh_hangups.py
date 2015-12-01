@@ -138,6 +138,7 @@ class HangupsThread(threading.Thread):
                 'phones': user.phones._values,
                 'photo_url': user.photo_url,
                 'status': presence_to_status(user.presence),
+                'status_message': user.get_mood_message(),
             }
         self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
 
@@ -145,4 +146,5 @@ class HangupsThread(threading.Thread):
     def on_presence(self, user, presence):
         self.send_message_to_xmpp({'what': 'presence',
                                    'gaia_id': user.id_.gaia_id,
-                                   'status': presence_to_status(presence)})
+                                   'status': presence_to_status(presence),
+                                   'status_message': user.get_mood_message()})
