@@ -8,6 +8,13 @@ import hangups
 
 hangups_manager = None
 
+def presence_to_status(presence):
+    status = 'offline'
+    if presence.reachable:
+        status = 'away'
+        if presence.available:
+            status = 'online'
+    return status
 
 class HangupsManager:
     hangouts_threads = {}
@@ -101,6 +108,8 @@ class HangupsThread(threading.Thread):
             yield from hangups.build_user_conversation_list(self.client)
         )
 
+        self.user_list.on_presence.add_observer(self.on_presence)
+
         # Query presence information for user list
         presence_request = hangouts_pb2.QueryPresenceRequest(
             request_header=self.client.get_request_header(),
@@ -118,11 +127,6 @@ class HangupsThread(threading.Thread):
         # Send user list to XMPP
         user_list_dict = {}
         for user in self.user_list.get_all():
-            status = 'offline'
-            if user.presence.reachable:
-                status = 'away'
-                if user.presence.available:
-                    status = 'online'
 
             user_list_dict[user.id_.gaia_id] = {
                 'chat_id': user.id_.chat_id,
@@ -133,6 +137,12 @@ class HangupsThread(threading.Thread):
                 'emails': user.emails._values,
                 'phones': user.phones._values,
                 'photo_url': user.photo_url,
-                'status': status,
+                'status': presence_to_status(user.presence),
             }
         self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
+
+    @asyncio.coroutine
+    def on_presence(self, user, presence):
+        self.send_message_to_xmpp({'what': 'presence',
+                                   'gaia_id': user.id_.gaia_id,
+                                   'status': presence_to_status(presence)})

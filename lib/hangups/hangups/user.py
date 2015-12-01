@@ -2,6 +2,8 @@
 
 from collections import namedtuple
 import logging
+import asyncio
+from . import event
 
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,11 @@ class UserList(object):
         instances. The latter is used only as a fallback, because it doesn't
         include a real first_name.
         """
+
+        # Event fired when the client connects for the first time with
+        # arguments ().
+        self.on_presence = event.Event('UserList.on_presence')
+
         self._client = client
         self._self_user = User.from_entity(self_entity, None)
         # {UserID: User}
@@ -134,12 +141,33 @@ class UserList(object):
         user = self.get_user(user_id)
         user.set_presence(presence_result.presence)
 
+    @asyncio.coroutine
     def _on_state_update(self, state_update):
         """Receive a StateUpdate"""
         if state_update.HasField('conversation'):
             self._handle_conversation(state_update.conversation)
 
+        notification_type = state_update.WhichOneof('state_update')
+        if notification_type == 'presence_notification':
+            yield from self._handle_presence_notification(
+                state_update.presence_notification
+            )
+
     def _handle_conversation(self, conversation):
         """Receive Conversation and update list of users"""
         for participant in conversation.participant_data:
             self.add_user_from_conv_part(participant)
+
+    @asyncio.coroutine
+    def _handle_presence_notification(self, presence_notification):
+        """Receive PresenceNotification and update the user."""
+        for presence in presence_notification.presence:
+            user_id = UserID(chat_id=presence.user_id.chat_id,
+                         gaia_id=presence.user_id.gaia_id)
+            user = self.get_user(user_id)
+            if user is not None:
+                user.set_presence(presence.presence)
+                yield from self.on_presence.fire(user, presence.presence)
+            else:
+                logger.warning('Received PresenceNotification for '
+                               'unknown user {}'.format(user_id))

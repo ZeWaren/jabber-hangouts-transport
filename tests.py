@@ -393,6 +393,17 @@ class Transport:
             time.sleep(5)
             self.xmpp_connect()
 
+    def send_presence(self, fromjid, jid, typ=None, show=None):
+        self.jabber.send(Presence(frm=jid, to=fromjid, typ=typ, show=show))
+
+    def send_presence_from_status(self, fromjid, jid, status='online'):
+        if status == 'away':
+            self.send_presence(fromjid, jid, show='xa')
+        elif status == 'online':
+            self.send_presence(fromjid, jid)
+        elif status == 'offline':
+            self.send_presence(fromjid, jid, typ='unavailable')
+
     def handle_message(self, message):
         print("Handling message from hangouts: ", message)
 
@@ -411,20 +422,9 @@ class Transport:
                                           status='Hangouts contact')
                 p.addChild(node=Node(NODE_VCARDUPDATE, payload=[Node('nickname', payload=user['full_name'])]))
                 self.jabber.send(p)
-                if user['status'] == 'away':
-                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
-                                              to=fromjid,
-                                              show='xa',
-                                              status=user['full_name']))
-                elif user['status'] == 'online':
-                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
-                                              to=fromjid,
-                                              status=user['full_name']))
-                elif user['status'] == 'online':
-                    self.jabber.send(Presence(frm='%s@%s'%(user['gaia_id'], config.jid),
-                                              to=fromjid,
-                                              typ='unavailable',
-                                              status=user['full_name']))
+                self.send_presence_from_status(fromjid, '%s@%s'%(user['gaia_id'], config.jid), user['status'])
+        elif message['what'] == 'presence':
+            self.send_presence_from_status(fromjid, '%s@%s'%(message['gaia_id'], config.jid), message['status'])
         else:
             hangups_manager.send_message(message['jid'], {'what': 'test'})
 
