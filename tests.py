@@ -478,7 +478,7 @@ class XMPPQueueThread(threading.Thread):
     def run(self):
         while self.transport.online == 1:
             try:
-                message = xmpp_queue.get(True, 1)
+                message = xmpp_queue.get(True, 0.01)
             except queue.Empty:
                 continue
 
@@ -575,7 +575,7 @@ if __name__ == '__main__':
         try:
             xmpp_lock.acquire()
             try:
-                connection.Process(1)
+                connection.Process(0.01)
             finally:
                 xmpp_lock.release()
         except KeyboardInterrupt:
