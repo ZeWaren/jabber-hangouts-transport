@@ -7,6 +7,7 @@ import traceback
 import shelve
 import threading
 from multiprocessing import Queue, Lock
+import queue
 import urllib.request
 import base64
 
@@ -465,8 +466,12 @@ class XMPPQueueThread(threading.Thread):
         self.transport = transport
 
     def run(self):
-        while True:
-            message = xmpp_queue.get()
+        while self.transport.online == 1:
+            try:
+                message = xmpp_queue.get(True, 1)
+            except queue.Empty:
+                continue
+
             xmpp_lock.acquire()
             try:
                 self.transport.handle_message(message)
@@ -574,3 +579,4 @@ if __name__ == '__main__':
 
     userfile.close()
     connection.disconnect()
+    sys.exit(0)
