@@ -65,12 +65,7 @@ class HangupsThread(threading.Thread):
 
         self.set_state('disconnected')
         self.loop.run_until_complete(self.client.connect())
-
-    def do_nothing(self):
-        self.A = True
-        while self.A:
-            yield from asyncio.sleep(1)
-        print("Do nothing terminated!")
+        print("Hangup thread stopped")
 
     def call_soon_thread_safe(self, message):
         self.loop.call_soon_threadsafe(asyncio.async, self.on_message(message))
@@ -113,8 +108,8 @@ class HangupsThread(threading.Thread):
         print("Message to process in a corouting: ", message)
         if message['what'] == 'disconnect':
             self.set_state('disconnected')
-            #self.client.disconnect()
-            self.A = False
+            yield from self.client.disconnect()
+            self.loop.stop()
         elif message['what'] == 'connect':
             self.set_state('connected')
         elif message['what'] == 'set_presence':

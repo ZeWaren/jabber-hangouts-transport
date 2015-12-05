@@ -212,6 +212,7 @@ class Transport:
                         hangups_manager.spawn_thread(fromstripped, xmpp_queue)
                         hobj = {'user_list': {}}
                         self.userlist[fromstripped] = hobj
+                        self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom()))
                 elif event.getType() == 'unavailable':
                     # Match resources and remove the newly unavailable one
                     if fromstripped in self.userlist:
@@ -281,7 +282,14 @@ class Transport:
         fromjid = event.getFrom()
         fromstripped = fromjid.getStripped()
         if fromstripped in userfile:
-            if event.getTo().getDomain() == config.jid:
+            if event.getTo() == config.jid:
+                m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
+                m.setID(event.getID())
+                v = m.addChild(name='vCard', namespace=NS_VCARD)
+                v.setTagData(tag='FN', val='Hangouts Transport')
+                v.setTagData(tag='NICKNAME', val='Hangouts Transport')
+                self.jabber.send(m)
+            elif event.getTo().getDomain() == config.jid:
                 nick = "Hangout User"
                 gaia_id = event.getTo().getNode()
                 if fromstripped in self.userlist:
@@ -293,21 +301,22 @@ class Transport:
                 v = m.addChild(name='vCard', namespace=NS_VCARD)
                 v.setTagData(tag='FN', val=nick)
                 v.setTagData(tag='NICKNAME', val=nick)
-                if self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'] != '':
-                    p = v.addChild(name='PHOTO')
-                    p.setTagData(tag='TYPE', val='image/jpeg')
-                    photo = download_url(self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'])
-                    p.setTagData(tag='BINVAL',
-                                 val=base64.b64encode(photo).decode())
-                if len(self.userlist[fromstripped]['user_list'][gaia_id]['phones']) > 0:
-                    p = v.addChild(name='TEL')
-                    p.addChild(name='HOME')
-                    p.addChild(name='VOICE')
-                    p.addChild(name='NUMBER', payload=self.userlist[fromstripped]['user_list'][gaia_id]['phones'][0])
-                if len(self.userlist[fromstripped]['user_list'][gaia_id]['emails']) > 0:
-                    p = v.addChild(name='EMAIL')
-                    p.addChild(name='INTERNET')
-                    p.addChild(name='USERID', payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
+                if fromstripped in self.userlist:
+                    if self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'] != '':
+                        p = v.addChild(name='PHOTO')
+                        p.setTagData(tag='TYPE', val='image/jpeg')
+                        photo = download_url(self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'])
+                        p.setTagData(tag='BINVAL',
+                                     val=base64.b64encode(photo).decode())
+                    if len(self.userlist[fromstripped]['user_list'][gaia_id]['phones']) > 0:
+                        p = v.addChild(name='TEL')
+                        p.addChild(name='HOME')
+                        p.addChild(name='VOICE')
+                        p.addChild(name='NUMBER', payload=self.userlist[fromstripped]['user_list'][gaia_id]['phones'][0])
+                    if len(self.userlist[fromstripped]['user_list'][gaia_id]['emails']) > 0:
+                        p = v.addChild(name='EMAIL')
+                        p.addChild(name='INTERNET')
+                        p.addChild(name='USERID', payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
                 self.jabber.send(m)
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
@@ -396,7 +405,8 @@ class Transport:
         raise NodeProcessed
 
     def xmpp_disconnect(self):
-        for jid in self.userlist.keys():
+        for jid in list(self.userlist.keys()):
+            self.jabber.send(Presence(frm=config.jid, to=jid, typ="unavailable"))
             hangups_manager.send_message(jid, {'what': 'disconnect'})
             hangups_manager.remove_thread(jid)
             hobj = self.userlist[jid]
@@ -477,6 +487,7 @@ class XMPPQueueThread(threading.Thread):
                 self.transport.handle_message(message)
             finally:
                 xmpp_lock.release()
+        print("Queue thread stopped")
 
 
 def load_config():
@@ -577,6 +588,9 @@ if __name__ == '__main__':
         if not connection.isConnected():
             transport.xmpp_disconnect()
 
+    if connection.isConnected():
+        transport.xmpp_disconnect()
     userfile.close()
     connection.disconnect()
+    print("Main thread stopped")
     sys.exit(0)
