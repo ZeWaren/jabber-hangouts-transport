@@ -54,6 +54,7 @@ class HangupsThread(threading.Thread):
         self.user_list = None
         self.state = None
         self.show = None
+        self.loop = None
 
     def run(self):
         policy = asyncio.get_event_loop_policy()
@@ -68,7 +69,8 @@ class HangupsThread(threading.Thread):
         print("Hangup thread stopped")
 
     def call_soon_thread_safe(self, message):
-        self.loop.call_soon_threadsafe(asyncio.async, self.on_message(message))
+        if self.loop is not None:
+            self.loop.call_soon_threadsafe(asyncio.async, self.on_message(message))
 
     def send_message_to_xmpp(self, message):
         message['jid'] = self.jid
