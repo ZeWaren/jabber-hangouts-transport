@@ -402,6 +402,10 @@ class Transport:
             self.jabber.send(Presence(frm=config.jid, to=jid, typ="unavailable"))
             jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
             jh_hangups.hangups_manager.remove_thread(jid)
+            for user in self.userlist[jid]['user_list']:
+                self.jabber.send(Presence(frm='%s@%s'%(user, config.jid),
+                                          to=jid,
+                                          typ="unavailable"))
             hobj = self.userlist[jid]
             del self.userlist[jid]
             del hobj
