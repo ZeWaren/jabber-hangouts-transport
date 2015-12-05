@@ -1,19 +1,12 @@
-import sys
-import os
-import logging
 import time
-import signal
-import traceback
-import shelve
+import logging
 import threading
 from multiprocessing import Queue, Lock
 import queue
 import urllib.request
 import base64
 
-sys.path.insert(0, './lib/hangups')
-sys.path.insert(0, './lib/xmpp')
-
+import config
 import xmpp
 import xmpp.client
 import xmpp.protocol
@@ -21,16 +14,16 @@ from xmpp.browser import Browser
 from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed, JID
 from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR
 from xmpp.simplexml import Node
-import config
-from jh_hangups import HangupsManager, hangups_manager
-
-_log = logging.getLogger(__name__)
+import jh_hangups
 
 NODE_ROSTER = 'roster'
 NODE_VCARDUPDATE='vcard-temp:x:update x'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
+userfile = None
+
+_log = logging.getLogger(__name__)
 
 class Transport:
     online = 1
@@ -209,14 +202,14 @@ class Transport:
                             del userfile[fromstripped]
                             userfile.sync()
                             return
-                        hangups_manager.spawn_thread(fromstripped, xmpp_queue)
+                        jh_hangups.hangups_manager.spawn_thread(fromstripped, xmpp_queue)
                         hobj = {'user_list': {}}
                         self.userlist[fromstripped] = hobj
                         self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom()))
                 elif event.getType() == 'unavailable':
                     # Match resources and remove the newly unavailable one
                     if fromstripped in self.userlist:
-                        hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
+                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
                         hobj = self.userlist[fromstripped]
                         del self.userlist[fromstripped]
                         del hobj
@@ -235,7 +228,7 @@ class Transport:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
 
     def xmpp_presence_do_update(self, event, fromstripped):
-        hangups_manager.send_message(fromstripped, {'what': 'set_presence', 'type': event.getType(), 'show': event.getShow()})
+        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'set_presence', 'type': event.getType(), 'show': event.getShow()})
 
     def xmpp_message(self, con, event):
         ev_type = event.getType()
@@ -251,7 +244,7 @@ class Transport:
                         state='paused'
                         if event.getTag('composing', namespace=NS_CHATSTATES):
                             state='started'
-                        hangups_manager.send_message(fromstripped, {'what': 'typing_notification',
+                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'typing_notification',
                                                                     'type': 'one_to_one',
                                                                     'gaia_id': event.getTo().getNode(),
                                                                     'state': state})
@@ -262,7 +255,7 @@ class Transport:
                         if event.getType() is None or event.getType() == 'normal':
                             print("Send!")
                         elif event.getType() == 'chat':
-                            hangups_manager.send_message(fromstripped, {'what': 'chat_message',
+                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                         'type': 'one_to_one',
                                                                         'gaia_id': event.getTo().getNode(),
                                                                         'message': event.getBody()})
@@ -407,8 +400,8 @@ class Transport:
     def xmpp_disconnect(self):
         for jid in list(self.userlist.keys()):
             self.jabber.send(Presence(frm=config.jid, to=jid, typ="unavailable"))
-            hangups_manager.send_message(jid, {'what': 'disconnect'})
-            hangups_manager.remove_thread(jid)
+            jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
+            jh_hangups.hangups_manager.remove_thread(jid)
             hobj = self.userlist[jid]
             del self.userlist[jid]
             del hobj
@@ -468,7 +461,7 @@ class Transport:
                     m.setTag('paused', namespace=NS_CHATSTATES)
                 self.jabber.send(m)
         else:
-            hangups_manager.send_message(message['jid'], {'what': 'test'})
+            jh_hangups.hangups_manager.send_message(message['jid'], {'what': 'test'})
 
 class XMPPQueueThread(threading.Thread):
     def __init__(self, transport):
@@ -489,108 +482,9 @@ class XMPPQueueThread(threading.Thread):
                 xmpp_lock.release()
         print("Queue thread stopped")
 
-
-def load_config():
-    config_options = {}
-    for configFile in config.configFiles:
-        if os.path.isfile(configFile):
-            xmlconfig.reloadConfig(configFile, config_options)
-            config.configFile = configFile
-            return
-    sys.stderr.write(("Configuration file not found. "
-                      "You need to create a config file and put it "
-                      " in one of these locations:\n ") + "\n ".join(config.configFiles))
-    sys.exit(1)
-
 def download_url(url):
     if not url.startswith('http'):
         url = 'http:' + url
     response = urllib.request.urlopen(url)
     data = response.read()
     return data
-
-def sig_handler(signum, frame):
-    transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)
-    if config.dumpProtocol:
-        print('Signal handler called with signal %s' % (signum,))
-    transport.online = 0
-
-version = 'unknown'
-
-
-def log_error():
-    err = '%s - %s\n' % (time.strftime('%a %d %b %Y %H:%M:%S'), version)
-    if logfile is not None:
-        logfile.write(err)
-        traceback.print_exc(file=logfile)
-        logfile.flush()
-    sys.stderr.write(err)
-    traceback.print_exc()
-
-
-def setup_debugging():
-    sys.path.append('/root/pycharm-debug-py3k.egg')
-    import pydevd
-    pydevd.settrace('192.168.4.47', port=5422, stdoutToServer=True, stderrToServer=True, suspend=False)
-
-
-if __name__ == '__main__':
-    setup_debugging()
-
-    hangups_manager = HangupsManager()
-    userfile = shelve.open(config.spoolFile)
-
-    logfile = None
-    if config.debugFile:
-        logfile = open(config.debugFile, 'a')
-
-    if config.dumpProtocol:
-        debug = ['always', 'nodebuilder']
-    else:
-        debug = []
-
-    if config.saslUsername:
-        sasl = 1
-    else:
-        config.saslUsername = config.jid
-        sasl = 0
-    connection = xmpp.client.Component(config.jid,
-                                       config.port,
-                                       debug=debug,
-                                       sasl=sasl,
-                                       bind=config.useComponentBinding,
-                                       route=config.useRouteWrap)
-
-    transport = Transport(connection, userfile)
-    if not transport.xmpp_connect():
-        print("Could not connect to server, or password mismatch!")
-        sys.exit(1)
-
-    signal.signal(signal.SIGINT, sig_handler)
-    signal.signal(signal.SIGTERM, sig_handler)
-
-    XMPPQueueThread(transport).start()
-
-    while transport.online:
-        try:
-            xmpp_lock.acquire()
-            try:
-                connection.Process(0.01)
-            finally:
-                xmpp_lock.release()
-        except KeyboardInterrupt:
-            _pendingException = sys.exc_info()
-            raise _pendingException[0](_pendingException[1]).with_traceback(_pendingException[2])
-        except IOError:
-            transport.xmpp_disconnect()
-        except:
-            log_error()
-        if not connection.isConnected():
-            transport.xmpp_disconnect()
-
-    if connection.isConnected():
-        transport.xmpp_disconnect()
-    userfile.close()
-    connection.disconnect()
-    print("Main thread stopped")
-    sys.exit(0)
