@@ -597,6 +597,15 @@ class ConversationList(object):
         """
         return self._conv_dict[conv_id]
 
+    def get_one_to_one_with_user(self, gaia_id):
+        for conv in self._conv_dict.values():
+            if conv._conversation.type != hangouts_pb2.CONVERSATION_TYPE_ONE_TO_ONE:
+                continue
+            for user in conv.users:
+                if user.id_.gaia_id == gaia_id:
+                    return conv
+        return None
+
     def add_conversation(self, conversation, events=[]):
         """Add new conversation from hangouts_pb2.Conversation"""
         # pylint: disable=dangerous-default-value

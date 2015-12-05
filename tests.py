@@ -17,7 +17,7 @@ import xmpp
 import xmpp.client
 import xmpp.protocol
 from xmpp.browser import Browser
-from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed
+from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed, JID
 from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR
 from xmpp.simplexml import Node
 import config
@@ -245,12 +245,25 @@ class Transport:
             if fromstripped in self.userlist:
                 hobject = self.userlist[fromstripped]
                 if event.getTo().getDomain() == config.jid:
+                    if event.getBody() is None:
+                        state='paused'
+                        if event.getTag('composing', namespace=NS_CHATSTATES):
+                            state='started'
+                        hangups_manager.send_message(fromstripped, {'what': 'typing_notification',
+                                                                    'type': 'one_to_one',
+                                                                    'gaia_id': event.getTo().getNode(),
+                                                                    'state': state})
+                        return
+
                     resource = 'messenger'
                     if resource == 'messenger':
                         if event.getType() is None or event.getType() == 'normal':
                             print("Send!")
                         elif event.getType() == 'chat':
-                            print("Send!")
+                            hangups_manager.send_message(fromstripped, {'what': 'chat_message',
+                                                                        'type': 'one_to_one',
+                                                                        'gaia_id': event.getTo().getNode(),
+                                                                        'message': event.getBody()})
                         else:
                             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
             else:
@@ -425,6 +438,24 @@ class Transport:
                 self.send_presence_from_status(fromjid, '%s@%s'%(user['gaia_id'], config.jid), user['status'])
         elif message['what'] == 'presence':
             self.send_presence_from_status(fromjid, '%s@%s'%(message['gaia_id'], config.jid), message['status'])
+        elif message['what'] == 'chat_message':
+            if message['type'] == 'one_to_one':
+                m = Message(typ='chat',
+                            frm='%s@%s' % (message['gaia_id'], config.jid),
+                            to=JID(fromjid),
+                            body=message['message'])
+                m.setTag('active', namespace=NS_CHATSTATES)
+                self.jabber.send(m)
+        elif message['what'] == 'typing_notification':
+            if message['type'] == 'one_to_one':
+                m = Message(typ='chat',
+                            frm='%s@%s' % (message['gaia_id'], config.jid),
+                            to=JID(fromjid))
+                if message['state'] == 'started':
+                    m.setTag('composing', namespace=NS_CHATSTATES)
+                else:
+                    m.setTag('paused', namespace=NS_CHATSTATES)
+                self.jabber.send(m)
         else:
             hangups_manager.send_message(message['jid'], {'what': 'test'})
 
