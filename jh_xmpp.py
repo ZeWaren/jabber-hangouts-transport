@@ -242,31 +242,39 @@ class Transport:
                     # should do something more elegant here
                     pass
                 elif event.getType() is None or event.getType() == 'available' or event.getType() == 'invisible':
-                    if fromstripped in self.userlist:
-                        self.xmpp_presence_do_update(event, fromstripped)
-                    else:
-                        try:
-                            conf = userfile[fromstripped]
-                        except:
-                            self.jabber.send(Message(to=fromstripped,
-                                                     subject='Transport Configuration Error',
-                                                     body='The transport has found that your configuration could not be loaded. Please re-register with the transport'))
-                            del userfile[fromstripped]
-                            userfile.sync()
-                            return
-                        jh_hangups.hangups_manager.spawn_thread(fromstripped, xmpp_queue)
-                        hobj = {'user_list': {}}
-                        self.userlist[fromstripped] = hobj
-                        self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom()))
+                    if event.getTo() == config.jid:
+                        if fromstripped in self.userlist:
+                            self.userlist[fromstripped]['connected_jids'][fromjid] = True
+                            self.xmpp_presence_do_update(event, fromstripped)
+                            for user in self.userlist[fromstripped]['user_list']:
+                                self.send_presence_from_status(fromjid, '%s@%s'%(user, config.jid), self.userlist[fromstripped]['user_list'][user]['status'])
+                        else:
+                            try:
+                                conf = userfile[fromstripped]
+                            except:
+                                self.jabber.send(Message(to=fromstripped,
+                                                         subject='Transport Configuration Error',
+                                                         body='The transport has found that your configuration could not be loaded. Please re-register with the transport'))
+                                del userfile[fromstripped]
+                                userfile.sync()
+                                return
+                            jh_hangups.hangups_manager.spawn_thread(fromstripped, xmpp_queue)
+                            hobj = {'user_list': {},
+                                    'connected_jids': {event.getFrom(): True}}
+                            self.userlist[fromstripped] = hobj
+                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom()))
                 elif event.getType() == 'unavailable':
-                    # Match resources and remove the newly unavailable one
-                    if fromstripped in self.userlist:
-                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
-                        hobj = self.userlist[fromstripped]
-                        del self.userlist[fromstripped]
-                        del hobj
-                    else:
-                        self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
+                    if event.getTo() == config.jid:
+                        if fromstripped in self.userlist:
+                            if fromjid in self.userlist[fromstripped]['connected_jids']:
+                                del self.userlist[fromstripped]['connected_jids'][fromjid]
+                                if len(self.userlist[fromstripped]['connected_jids']) == 0:
+                                    jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
+                                    hobj = self.userlist[fromstripped]
+                                    del self.userlist[fromstripped]
+                                    del hobj
+                        else:
+                            self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
             elif event.getTo().getDomain() == config.confjid:
                 conv_id = event.getTo().getNode()
                 if conv_id in self.userlist[fromstripped]['conv_list']:
@@ -559,6 +567,8 @@ class Transport:
                 conv = message['conv_list'][conv_id]
                 conv['connected_jids'] = {}
         elif message['what'] == 'presence':
+            if message['gaia_id'] in self.userlist[fromjid]['user_list']:
+                self.userlist[fromjid]['user_list'][message['gaia_id']]['status'] = message['status']
             self.send_presence_from_status(fromjid, '%s@%s'%(message['gaia_id'], config.jid), message['status'])
         elif message['what'] == 'chat_message':
             if message['type'] == 'one_to_one':
