@@ -4,6 +4,7 @@ import threading
 
 from hangups.auth import GoogleAuthError
 import hangups.hangouts_pb2 as hangouts_pb2
+from hangups.conversation_event import ChatMessageEvent, RenameEvent, MembershipChangeEvent
 import hangups
 
 hangups_manager = None
@@ -130,6 +131,37 @@ class HangupsThread(threading.Thread):
                 yield from conv.set_typing(typ)
 
     @asyncio.coroutine
+    def conversation_history_request(self, message):
+        """XMPP asks for history. Fetch and forward it."""
+        conv = self.conv_list.get_from_sha1_id(message['conv_id'])
+        if conv:
+            # Get the latest events
+            events = yield from conv.get_n_last_events(50)
+
+            # Build a dictionary list payload
+            history = []
+            for event in events:
+                if isinstance(event, ChatMessageEvent):
+                    history.append({
+                        'type': 'message',
+                        'message': event.text,
+                        'timestamp': event.timestamp,
+                        'gaia_id': event.user_id.gaia_id
+                    })
+                elif isinstance(event, RenameEvent):
+                    history.append({
+                        'type': 'rename',
+                        'new_name': event.new_name,
+                        'timestamp': event.timestamp,
+                    })
+
+            # Send data to XMPP
+            self.send_message_to_xmpp({'what': 'conversation_history',
+                                       'conv_id': message['conv_id'],
+                                       'history': history,
+                                       'recipient_jid': message['sender_jid']})
+
+    @asyncio.coroutine
     def on_message(self, message):
         """Receive a message from XMPP"""
         if message['what'] == 'disconnect':
@@ -144,6 +176,8 @@ class HangupsThread(threading.Thread):
             yield from self.chat_message(message)
         elif message['what'] == 'typing_notification':
             yield from self.typing_notification(message)
+        elif message['what'] == 'conversation_history_request':
+            yield from self.conversation_history_request(message)
 
     @asyncio.coroutine
     def on_connect(self):

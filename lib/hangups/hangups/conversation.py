@@ -454,6 +454,14 @@ class Conversation(object):
                         )
         return conv_events
 
+    @asyncio.coroutine
+    def get_n_last_events(self, n):
+        if len(self._events) >= n:
+            return self._events[-1*n:]
+        yield from self.get_events(self._events[0].id_)
+        return self._events[-1*n:]
+
+
     def next_event(self, event_id, prev=False):
         """Return ConversationEvent following the event with given event_id.
 

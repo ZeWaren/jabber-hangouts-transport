@@ -20,6 +20,7 @@ import jh_hangups
 NODE_ROSTER = 'roster'
 NODE_VCARDUPDATE = 'vcard-temp:x:update x'
 NS_CONFERENCE = 'jabber:x:conference'
+NS_DELAY = 'urn:xmpp:delay'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
@@ -327,6 +328,11 @@ class Transport:
                         conv['connected_jids'][fromjid] = True
                         if fromjid in conv['invited_jids']:
                             del conv['invited_jids'][fromjid]
+
+                        # Request conversation history from Hangouts.
+                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_history_request',
+                                                                               'conv_id': conv_id,
+                                                                               'sender_jid': fromjid})
 
                         # According to the protocol, the self-user should the last to be sent.
                         self_user = None
@@ -725,6 +731,38 @@ class Transport:
                 else:
                     m.setTag('paused', namespace=NS_CHATSTATES)
                 self.jabber.send(m)
+        elif message['what'] == 'conversation_history':
+            conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
+            if message['recipient_jid'] in conv['connected_jids']:
+                for event in message['history']:
+                    # See: XEP-0045: Multi-User Chat ->7.2.14 Discussion History
+                    # -> Example 35. Delivery of Discussion History:
+                    # http://xmpp.org/extensions/xep-0045.html#enter-history
+                    if event['type'] == 'message':
+                        # Regular chat message
+                        nick = conv['user_list'][event['gaia_id']] if event['gaia_id'] in conv['user_list'] else "Unknown"
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s/%s' % (message['conv_id'], config.confjid, nick),
+                                    to=message['recipient_jid'],
+                                    body=event['message'])
+                    elif event['type'] == 'rename':
+                        # Conversation was renamed
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    to=message['recipient_jid'],
+                                    body='Conversation was renamed to: %s' % (event['new_name']))
+                    else:
+                        # Unknown
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    to=message['recipient_jid'],
+                                    body='[Unknown event]')
+
+                    m.addChild('delay',
+                               attrs={'from': '%s@%s' % (message['conv_id'], config.confjid),
+                                      'stamp': event['timestamp'].isoformat()},
+                               namespace=NS_DELAY)
+                    self.jabber.send(m)
         else:
             jh_hangups.hangups_manager.send_message(message['jid'], {'what': 'test'})
 
