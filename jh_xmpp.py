@@ -19,6 +19,7 @@ import jh_hangups
 
 NODE_ROSTER = 'roster'
 NODE_VCARDUPDATE = 'vcard-temp:x:update x'
+NS_CONFERENCE = 'jabber:x:conference'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
@@ -291,8 +292,15 @@ class Transport:
                 elif event.getType() == 'unavailable':
                     if event.getTo() == config.jid:
                         # A resource has become disconnected:
-                        # remove it from the list
+                        # remove it from the list.
                         if fromstripped in self.userlist:
+                            # Delete any invitation to multi-user chat.
+                            for conv_id in self.userlist[fromstripped]['conv_list']:
+                                conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                                if fromjid in conv['invited_jids']:
+                                    del conv['invited_jids'][fromjid]
+
+                            # Remove from the main list
                             if fromjid in self.userlist[fromstripped]['connected_jids']:
                                 del self.userlist[fromstripped]['connected_jids'][fromjid]
                                 if len(self.userlist[fromstripped]['connected_jids']) == 0:
@@ -314,8 +322,11 @@ class Transport:
 
                     if event.getType() == 'available' or event.getType() is None or event.getType() == '':
                         # Client joined the conversation:
-                        # add it to the list of connected resources and send the user list.
-                        conv['connected_jids'][event.getFrom()] = True
+                        # add it to the list of connected resources and send the user list,
+                        # and delete it from the list of invitation.
+                        conv['connected_jids'][fromjid] = True
+                        if fromjid in conv['invited_jids']:
+                            del conv['invited_jids'][fromjid]
 
                         # According to the protocol, the self-user should the last to be sent.
                         self_user = None
@@ -654,6 +665,7 @@ class Transport:
             for conv_id in message['conv_list']:
                 conv = message['conv_list'][conv_id]
                 conv['connected_jids'] = {}
+                conv['invited_jids'] = {}
 
         elif message['what'] == 'presence':
             # Receive presence information of contact:
@@ -687,6 +699,19 @@ class Transport:
                                         to=ajid,
                                         body=message['message'])
                             self.jabber.send(m)
+                        # Send an invitation to every resource that did not open the conversation.
+                        for ajid in self.userlist[fromjid]['connected_jids']:
+                            if ajid not in conv['connected_jids'] and ajid not in conv['invited_jids']:
+                                conv['invited_jids'][ajid] = True
+                                # See: XEP-0249: Direct MUC Invitations -> 2. How It Works -> Example 1:
+                                # http://xmpp.org/extensions/xep-0249.html
+                                node = Node('x', {'jid': '%s@%s' % (message['conv_id'], config.confjid),
+                                                  'reason': 'New messages are in!'})
+                                node.setNamespace(NS_CONFERENCE)
+                                m = Message(frm=config.confjid,
+                                            to=ajid,
+                                            payload=[node])
+                                self.jabber.send(m)
 
         elif message['what'] == 'typing_notification':
             # Receive a typing notification:
