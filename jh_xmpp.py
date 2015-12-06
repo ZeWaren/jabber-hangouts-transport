@@ -293,13 +293,15 @@ class Transport:
                                                               jid='%s@%s' % (user, config.jid))])
                                 self.jabber.send(p)
                         if self_user is not None:
-                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
-                                             to=event.getFrom(),
-                                             payload=[MucUser(role='participant',
-                                                              affiliation='member',
-                                                              status=110,
-                                                              jid='%s@%s' % (self_user, config.jid))])
-                                self.jabber.send(p)
+                            muc_user = MucUser(role='participant',
+                                               affiliation='member',
+                                               jid='%s@%s' % (self_user, config.jid))
+                            muc_user.addChild('status', {'code': 110})
+                            muc_user.addChild('status', {'code': 210})
+                            p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
+                                         to=event.getFrom(),
+                                         payload=[muc_user])
+                            self.jabber.send(p)
                     elif event.getType() == 'unavailable':
                         if event.getFrom() in conv['connected_jids']:
                             del conv['connected_jids'][event.getFrom()]
