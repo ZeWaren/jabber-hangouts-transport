@@ -8,7 +8,9 @@ import hangups
 
 hangups_manager = None
 
+
 def presence_to_status(presence):
+    """Convert a pb2 presence object to a presence description string."""
     status = 'offline'
     if presence.reachable:
         status = 'away'
@@ -16,29 +18,38 @@ def presence_to_status(presence):
             status = 'online'
     return status
 
+
 class HangupsManager:
+    """Manage the different Hangouts threads."""
     hangouts_threads = {}
 
     def spawn_thread(self, jid, xmpp_queue):
+        """Create a new Hangouts connection"""
         thread = HangupsThread(jid, xmpp_queue)
         self.hangouts_threads[jid] = thread
         thread.start()
 
     def get_thread(self, jid):
-        if not jid in self.hangouts_threads:
+        """Get a specific Hangouts thread."""
+        if jid not in self.hangouts_threads:
             return None
         return self.hangouts_threads[jid]
 
     def remove_thread(self, jid):
+        """Remove a specific thread from the list."""
         if jid in self.hangouts_threads:
             del self.hangouts_threads[jid]
 
     def send_message(self, jid, message):
+        """Send work to a thread."""
         thread = self.get_thread(jid)
         if thread is not None:
             thread.call_soon_thread_safe(message)
 
+
 class HangupsThread(threading.Thread):
+    """Represent a connection with Hangouts."""
+
     def __init__(self, jid, xmpp_queue):
         super().__init__()
 
@@ -55,8 +66,11 @@ class HangupsThread(threading.Thread):
         self.state = None
         self.show = None
         self.loop = None
+        self.client = None
+        self.type = None
 
     def run(self):
+        """Start the main loop."""
         policy = asyncio.get_event_loop_policy()
         self.loop = policy.new_event_loop()
         policy.set_event_loop(self.loop)
@@ -69,10 +83,13 @@ class HangupsThread(threading.Thread):
         print("Hangup thread stopped")
 
     def call_soon_thread_safe(self, message):
+        """Allow self.on_message to be called inside the asyncio loop.
+           Can be called from a different thread."""
         if self.loop is not None:
             self.loop.call_soon_threadsafe(asyncio.async, self.on_message(message))
 
     def send_message_to_xmpp(self, message):
+        """Push a message to the XMPP message queue."""
         message['jid'] = self.jid
         self.xmpp_queue.put(message)
 
@@ -80,13 +97,14 @@ class HangupsThread(threading.Thread):
         print("Setting state: ", state)
         self.state = state
 
-    def set_presence(self, type, show):
-        print("Setting presence: ", type, show)
-        self.type = type
+    def set_presence(self, typ, show):
+        print("Setting presence: ", typ, show)
+        self.type = typ
         self.show = show
 
     @asyncio.coroutine
     def chat_message(self, message):
+        """Receive a message from XMPP, and forward it to Hangouts."""
         if message['message'] is None:
             return
         if message['type'] == 'one_to_one':
@@ -102,17 +120,18 @@ class HangupsThread(threading.Thread):
 
     @asyncio.coroutine
     def typing_notification(self, message):
+        """Receive a typing notification from XMPP, and forward it to Hangouts."""
         if message['type'] == 'one_to_one':
             conv = self.conv_list.get_one_to_one_with_user(message['gaia_id'])
             if conv:
-                type = hangouts_pb2.TYPING_TYPE_PAUSED
+                typ = hangouts_pb2.TYPING_TYPE_PAUSED
                 if message['state'] == 'started':
-                    type = hangouts_pb2.TYPING_TYPE_STARTED
-                yield from conv.set_typing(type)
+                    typ = hangouts_pb2.TYPING_TYPE_STARTED
+                yield from conv.set_typing(typ)
 
     @asyncio.coroutine
     def on_message(self, message):
-        print("Message to process in a corouting: ", message)
+        """Receive a message from XMPP"""
         if message['what'] == 'disconnect':
             self.set_state('disconnected')
             yield from self.client.disconnect()
@@ -170,6 +189,7 @@ class HangupsThread(threading.Thread):
             }
         self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
 
+        # Send conversation list to XMPP
         conv_list_dict = {}
         for conv in self.conv_list.get_all():
             if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
@@ -178,6 +198,7 @@ class HangupsThread(threading.Thread):
                 for user in conv.users:
                     user_list[user.id_.gaia_id] = user_list_dict[user.id_.gaia_id]['full_name'] if user.id_.gaia_id in user_list_dict else user.id_.gaia_id
                     if user.is_self:
+                        # XMPP needs to know which user is itself.
                         self_gaia_id = user.id_.gaia_id
                 conv_list_dict[conv.id_sha1] = {
                     'conv_id': conv.id_sha1,
@@ -191,16 +212,18 @@ class HangupsThread(threading.Thread):
 
     @asyncio.coroutine
     def on_presence(self, user, presence):
+        """Receive presence information from Hangouts, and forward it to XMPP."""
         self.send_message_to_xmpp({'what': 'presence',
                                    'gaia_id': user.id_.gaia_id,
                                    'status': presence_to_status(presence),
                                    'status_message': user.get_mood_message()})
 
     def on_event(self, conv_event):
-        """Open conversation tab for new messages when they arrive."""
+        """Receive event from Hangouts."""
         conv = self.conv_list.get(conv_event.conversation_id)
         user = conv.get_user(conv_event.user_id)
         if isinstance(conv_event, hangups.ChatMessageEvent):
+            # Event is a chat message: foward it to XMPP.
             if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_ONE_TO_ONE:
                 if not user.is_self:
                     self.send_message_to_xmpp({'what': 'chat_message',
@@ -215,7 +238,7 @@ class HangupsThread(threading.Thread):
                                            'message': conv_event.text})
 
     def on_typing(self, typing_message):
-        """Open conversation tab for new messages when they arrive."""
+        """Receive typing notification from Hangouts, and forward it to XMPP."""
         conv = self.conv_list.get(typing_message.conv_id)
         user = conv.get_user(typing_message.user_id)
         if conv is not None and user is not None:

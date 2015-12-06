@@ -1,7 +1,6 @@
 import sys
 sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
-
 import os
 import logging
 import time
@@ -21,6 +20,7 @@ _log = logging.getLogger(__name__)
 
 version = 'unknown'
 
+
 def load_config():
     config_options = {}
     for configFile in config.configFiles:
@@ -32,6 +32,7 @@ def load_config():
                       "You need to create a config file and put it "
                       " in one of these locations:\n ") + "\n ".join(config.configFiles))
     sys.exit(1)
+
 
 def sig_handler(signum, frame):
     transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)
