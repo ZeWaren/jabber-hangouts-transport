@@ -94,6 +94,11 @@ class HangupsThread(threading.Thread):
             if conv:
                 segments = hangups.ChatMessageSegment.from_str(message['message'])
                 yield from conv.send_message(segments)
+        elif message['type'] == 'group':
+            conv = self.conv_list.get_from_sha1_id(message['conv_id'])
+            if conv:
+                segments = hangups.ChatMessageSegment.from_str(message['message'])
+                yield from conv.send_message(segments)
 
     @asyncio.coroutine
     def typing_notification(self, message):
@@ -151,7 +156,6 @@ class HangupsThread(threading.Thread):
         # Send user list to XMPP
         user_list_dict = {}
         for user in self.user_list.get_all():
-
             user_list_dict[user.id_.gaia_id] = {
                 'chat_id': user.id_.chat_id,
                 'gaia_id': user.id_.gaia_id,
@@ -165,6 +169,25 @@ class HangupsThread(threading.Thread):
                 'status_message': user.get_mood_message(),
             }
         self.send_message_to_xmpp({'what': 'user_list', 'user_list': user_list_dict})
+
+        conv_list_dict = {}
+        for conv in self.conv_list.get_all():
+            if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
+                user_list = {}
+                self_gaia_id = None
+                for user in conv.users:
+                    user_list[user.id_.gaia_id] = user_list_dict[user.id_.gaia_id]['full_name'] if user.id_.gaia_id in user_list_dict else user.id_.gaia_id
+                    if user.is_self:
+                        self_gaia_id = user.id_.gaia_id
+                conv_list_dict[conv.id_sha1] = {
+                    'conv_id': conv.id_sha1,
+                    'topic': conv.name,
+                    'user_list': user_list,
+                    'self_id': self_gaia_id,
+                }
+        self.send_message_to_xmpp({'what': 'conv_list',
+                                   'conv_list': conv_list_dict,
+                                   'self_gaia': self.user_list._self_user.id_.gaia_id})
 
     @asyncio.coroutine
     def on_presence(self, user, presence):
@@ -184,6 +207,12 @@ class HangupsThread(threading.Thread):
                                                'type': 'one_to_one',
                                                'gaia_id': user.id_.gaia_id,
                                                'message': conv_event.text})
+            elif conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
+                self.send_message_to_xmpp({'what': 'chat_message',
+                                           'type': 'group',
+                                           'conv_id': conv.id_sha1,
+                                           'gaia_id': user.id_.gaia_id,
+                                           'message': conv_event.text})
 
     def on_typing(self, typing_message):
         """Open conversation tab for new messages when they arrive."""

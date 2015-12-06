@@ -11,9 +11,10 @@ import xmpp
 import xmpp.client
 import xmpp.protocol
 from xmpp.browser import Browser
-from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed, JID
-from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR
+from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed, JID, DataForm
+from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR, NS_MUC, NS_MUC_UNIQUE, NS_DISCO_ITEMS
 from xmpp.simplexml import Node
+from toolbox import MucUser
 import jh_hangups
 
 NODE_ROSTER = 'roster'
@@ -58,15 +59,16 @@ class Transport:
         self.jabber.RegisterHandler('iq', self.xmpp_iq_discoinfo_results, typ='result', ns=NS_DISCO_INFO)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_get, typ='get', ns=NS_REGISTER)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_set, typ='set', ns=NS_REGISTER)
-        self.jabber.RegisterHandler('iq',self.xmpp_iq_vcard, typ = 'get', ns=NS_VCARD)
+        self.jabber.RegisterHandler('iq', self.xmpp_iq_vcard, typ = 'get', ns=NS_VCARD)
 
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
         self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid=config.jid)
+        self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid=config.confjid)
+        self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid='')
 
     # Disco Handlers
     def xmpp_base_disco(self, con, event, ev_type):
-        print("DICOOOO")
         fromjid = event.getFrom().__str__()
         fromstripped = event.getFrom().getStripped()
         to = event.getTo()
@@ -80,7 +82,8 @@ class Transport:
                         features=[NS_VERSION, NS_COMMANDS, NS_PRESENCE, NS_REGISTER, NS_CHATSTATES])
                 if ev_type == 'items':
                     alist = [
-                        {'node': NODE_ROSTER, 'name': config.discoName + ' Roster', 'jid': config.jid}
+                        {'node': NODE_ROSTER, 'name': config.discoName + ' Roster', 'jid': config.jid},
+                        {'name': config.discoName + ' group chats', 'jid': config.confjid},
                     ]
                     return alist
             elif node == NODE_ROSTER:
@@ -96,10 +99,26 @@ class Transport:
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
+        elif to == config.confjid:
+            if node is None:
+                if ev_type == 'info':
+                    if fromstripped == config.mainServerJID:
+                        raise NodeProcessed
+                    return {'ids':[{'category': 'conference',
+                                    'type': 'text',
+                                    'name': config.discoName + ' Group Chats'}],
+                            'features':[NS_MUC, NS_MUC_UNIQUE, NS_VERSION, NS_DISCO_INFO, NS_DISCO_ITEMS]}
+                if ev_type == 'items':
+                    alist = []
+                    if fromstripped in self.userlist:
+                        for conv_id in self.userlist[fromstripped]['conv_list']:
+                            conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                            alist.append({'jid': '%s@%s' % (conv_id, config.confjid), 'name': conv['topic']})
+                    return alist
         elif to.getDomain() == config.jid:
             if fromstripped in self.userlist:
                 gaia_id = event.getTo().getNode()
-                if type == 'info':
+                if ev_type == 'info':
                     if gaia_id in self.userlist[fromstripped]['user_list']:
                         features = [NS_VCARD,NS_VERSION,NS_CHATSTATES]
                         return {'ids':[{'category': 'client',
@@ -108,11 +127,44 @@ class Transport:
                                 'features':features}
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-                if type == 'items':
+                if ev_type == 'items':
                     if gaia_id in self.userlist[fromstripped]['user_list']:
                         return []
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+        elif to.getDomain() == config.confjid:
+            if ev_type == 'info':
+                if fromstripped in self.userlist:
+                    conv_id = event.getTo().getNode()
+                    if conv_id in self.userlist[fromstripped]['conv_list']:
+                        conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                        result = {'ids':[{'category': 'conference',
+                                          'type': 'text',
+                                          'name': conv_id}],
+                                  'features':[NS_MUC, NS_VCARD]}
+                        data = {'muc#roominfo_description': conv['topic'],
+                                'muc#roominfo_subject': conv['topic'],
+                                'muc#roominfo_occupants': len(conv['user_list'])}
+                        info = DataForm(typ='result', data=data)
+                        field = info.setField('FORM_TYPE')
+                        field.setType('hidden')
+                        field.setValue('http://jabber.org/protocol/muc#roominfo')
+                        result['xdata'] = info
+                        return result
+                    else:
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+                else:
+                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+            if ev_type == 'items':
+                alist = []
+                if fromstripped in self.userlist:
+                    conv_id = event.getTo().getNode()
+                    if conv_id in self.userlist[fromstripped]['conv_list']:
+                        conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                        for user in conv['user_list']:
+                            alist.append({'jid':'%s@%s' %(user, config.jid),
+                                          'name': conv['user_list'][user]})
+                return alist
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['MALFORMED_JID']))
             raise NodeProcessed
@@ -215,6 +267,36 @@ class Transport:
                         del hobj
                     else:
                         self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
+            elif event.getTo().getDomain() == config.confjid:
+                conv_id = event.getTo().getNode()
+                if conv_id in self.userlist[fromstripped]['conv_list']:
+                    conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                    if event.getType() == 'available' or event.getType() == None or event.getType() == '':
+                        conv['connected_jids'][event.getFrom()] = True
+                        self_user = None
+                        for user in conv['user_list']:
+                            if user == conv['self_id']:
+                                self_user = user
+                            else:
+                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][user]),
+                                             to=event.getFrom(),
+                                             payload=[MucUser(role='participant',
+                                                              affiliation='member',
+                                                              jid='%s@%s' % (user, config.jid))])
+                                self.jabber.send(p)
+                        if self_user is not None:
+                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
+                                             to=event.getFrom(),
+                                             payload=[MucUser(role='participant',
+                                                              affiliation='member',
+                                                              status=110,
+                                                              jid='%s@%s' % (self_user, config.jid))])
+                                self.jabber.send(p)
+                    elif event.getType() == 'unavailable':
+                        if event.getFrom() in conv['connected_jids']:
+                            del conv['connected_jids'][event.getFrom()]
+                    else:
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_FEATURE_NOT_IMPLEMENTED']))
         else:
             # Need to add auto-unsubscribe on probe events here.
             if event.getType() == 'probe':
@@ -261,6 +343,19 @@ class Transport:
                                                                         'message': event.getBody()})
                         else:
                             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+                elif event.getTo().getDomain() == config.confjid:
+                    if event.getBody() is None:
+                        return
+                    if event.getSubject():
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_IMPLEMENTED']))
+                        return
+                    if event.getTo().getResource() is None or event.getTo().getResource() == '':
+                        conv_id = event.getTo().getNode()
+                        if conv_id in self.userlist[fromstripped]['conv_list']:
+                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
+                                                                                   'type': 'group',
+                                                                                   'conv_id': conv_id,
+                                                                                   'message': event.getBody()})
             else:
                 if config.dumpProtocol: print('no item error')
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
@@ -311,6 +406,19 @@ class Transport:
                         p.addChild(name='INTERNET')
                         p.addChild(name='USERID', payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
                 self.jabber.send(m)
+            elif event.getTo().getDomain() == config.confjid:
+                conv_id = event.getTo().getNode()
+                if conv_id in self.userlist[fromstripped]['conv_list']:
+                    conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                    m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
+                    m.setID(event.getID())
+                    v = m.addChild(name='vCard', namespace=NS_VCARD)
+                    v.setTagData(tag='FN', val=conv['topic'])
+                    v.setTagData(tag='NICKNAME', val=conv['topic'])
+                    self.jabber.send(m)
+                else:
+                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
+                    raise NodeProcessed
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
@@ -444,6 +552,12 @@ class Transport:
                 p.addChild(node=Node(NODE_VCARDUPDATE, payload=[Node('nickname', payload=user['full_name'])]))
                 self.jabber.send(p)
                 self.send_presence_from_status(fromjid, '%s@%s'%(user['gaia_id'], config.jid), user['status'])
+        elif message['what'] == 'conv_list':
+            hobj = self.userlist[fromjid]
+            hobj['conv_list'] = message['conv_list']
+            for conv_id in message['conv_list']:
+                conv = message['conv_list'][conv_id]
+                conv['connected_jids'] = {}
         elif message['what'] == 'presence':
             self.send_presence_from_status(fromjid, '%s@%s'%(message['gaia_id'], config.jid), message['status'])
         elif message['what'] == 'chat_message':
@@ -454,6 +568,17 @@ class Transport:
                             body=message['message'])
                 m.setTag('active', namespace=NS_CHATSTATES)
                 self.jabber.send(m)
+            elif message['type'] == 'group':
+                if message['conv_id'] in self.userlist[fromjid]['conv_list']:
+                    conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
+                    if message['gaia_id'] in conv['user_list']:
+                        nick = conv['user_list'][message['gaia_id']]
+                        for ajid in conv['connected_jids']:
+                            m = Message(typ='groupchat',
+                                        frm='%s@%s/%s' % (message['conv_id'], config.confjid, nick),
+                                        to=ajid,
+                                        body=message['message'])
+                            self.jabber.send(m)
         elif message['what'] == 'typing_notification':
             if message['type'] == 'one_to_one':
                 m = Message(typ='chat',

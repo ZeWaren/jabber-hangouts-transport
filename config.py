@@ -2,6 +2,7 @@ configFiles = ['config.xml', '/etc/jabberhangouts.conf.xml']
 configFile = None
 
 jid = "hangups.bsdhangup.zwm"
+confjid = "conf.hangups.bsdhangup.zwm"
 host = ""
 discoName = "Hangouts Transport"
 pid = ""

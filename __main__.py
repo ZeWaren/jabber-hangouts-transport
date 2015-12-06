@@ -78,6 +78,7 @@ if __name__ == '__main__':
     connection = xmpp.client.Component(config.jid,
                                        config.port,
                                        debug=debug,
+                                       domains=[config.jid, config.confjid],
                                        sasl=sasl,
                                        bind=config.useComponentBinding,
                                        route=config.useRouteWrap)

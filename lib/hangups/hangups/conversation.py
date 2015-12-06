@@ -3,6 +3,7 @@
 import asyncio
 import datetime
 import logging
+import hashlib
 
 from hangups import (parsers, event, user, conversation_event, exceptions,
                      hangouts_pb2)
@@ -484,6 +485,11 @@ class Conversation(object):
         return self._conversation.conversation_id.id
 
     @property
+    def id_sha1(self):
+        hash_object = hashlib.sha1(self._conversation.conversation_id.id.encode('utf-8'))
+        return hash_object.hexdigest()
+
+    @property
     def users(self):
         """User instances of the conversation's current participants."""
         return [self._user_list.get_user(user.UserID(chat_id=part.id.chat_id,
@@ -604,6 +610,14 @@ class ConversationList(object):
             for user in conv.users:
                 if user.id_.gaia_id == gaia_id:
                     return conv
+        return None
+
+    def get_from_sha1_id(self, sha1_id):
+        for conv in self._conv_dict.values():
+            if conv._conversation.type != hangouts_pb2.CONVERSATION_TYPE_GROUP:
+                continue
+            if conv.id_sha1 == sha1_id:
+                return conv
         return None
 
     def add_conversation(self, conversation, events=[]):
