@@ -458,6 +458,15 @@ class Transport:
                                                                                    'conv_id': conv_id,
                                                                                    'sender_jid': from_jid,
                                                                                    'message': event.getBody()})
+                    else:
+                        # Conversation was not found: reply with an error message.
+                        error_node = Node('error', {'type': 'cancel', 'code': 503})
+                        error_node.addChild('service-unavailable', namespace=NS_XMPP_STANZAS)
+                        m = Message(typ='error',
+                                    frm='%s@%s' % (conv_id, config.confjid),
+                                    to=from_jid,
+                                    body='Conversation does not exist.', payload=[error_node])
+                        self.jabber.send(m)
             else:
                 # A message was received from someone who was not registered
                 if config.dumpProtocol:
@@ -867,15 +876,28 @@ class Transport:
                                                           jid='%s@%s' % (gaia_id, config.jid))])
                             self.jabber.send(p)
 
+                    if conv['self_id'] in message['old_members']:
+                        # We are in the list of former members. This means that we left the conversation:
+                        # Send a message and delete the conversation.
+                        for ajid in conv['connected_jids']:
+                            m = Message(typ='groupchat',
+                                        frm='%s@%s' % (message['conv_id'], config.confjid),
+                                        to=ajid,
+                                        body='You have left the conversation in another client.')
+                            self.jabber.send(m)
+
+                        # Remove the conversation from the list.
+                        del self.userlist[fromjid]['conv_list'][message['conv_id']]
+
         elif message['what'] == 'chat_message_error':
             # A chat message from XMPP was not delivered.
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                 error_node = Node('error', {'type': 'cancel', 'code': 503})
                 error_node.addChild('service-unavailable', namespace=NS_XMPP_STANZAS)
                 if message['type'] == 'one_to_one':
-                    frm = '%s@%s' % (message['gaia_id'], config.jid),
+                    frm = '%s@%s' % (message['gaia_id'], config.jid)
                 else:
-                    frm = '%s@%s' % (message['conv_id'], config.confjid),
+                    frm = '%s@%s' % (message['conv_id'], config.confjid)
                 m = Message(typ='error',
                             frm=frm,
                             to=message['recipient_jid'],
