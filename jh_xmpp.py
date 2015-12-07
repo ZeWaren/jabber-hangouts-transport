@@ -286,6 +286,7 @@ class Transport:
                             # Spawn a new Hangout client and initialize a new userlist entry
                             jh_hangups.hangups_manager.spawn_thread(fromstripped, xmpp_queue)
                             hobj = {'user_list': {},
+                                    'conv_list': {},
                                     'connected_jids': {event.getFrom(): True}}
                             self.userlist[fromstripped] = hobj
 
@@ -319,7 +320,7 @@ class Transport:
             elif event.getTo().getDomain() == config.confjid:
                 # JID of the multi-user chat system.
                 conv_id = event.getTo().getNode()
-                if conv_id in self.userlist[fromstripped]['conv_list']:
+                if fromstripped in self.userlist and conv_id in self.userlist[fromstripped]['conv_list']:
                     # Conversation was found.
                     conv = self.userlist[fromstripped]['conv_list'][conv_id]
 
@@ -518,7 +519,7 @@ class Transport:
             elif event.getTo().getDomain() == config.confjid:
                 # JID of a multi-user chat.
                 conv_id = event.getTo().getNode()
-                if conv_id in self.userlist[fromstripped]['conv_list']:
+                if fromstripped in self.userlist and conv_id in self.userlist[fromstripped]['conv_list']:
                     # Conversation is found.
                     conv = self.userlist[fromstripped]['conv_list'][conv_id]
                     m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
