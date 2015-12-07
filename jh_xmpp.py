@@ -21,6 +21,7 @@ NODE_ROSTER = 'roster'
 NODE_VCARDUPDATE = 'vcard-temp:x:update x'
 NS_CONFERENCE = 'jabber:x:conference'
 NS_DELAY = 'urn:xmpp:delay'
+NS_XMPP_STANZAS = 'urn:ietf:params:xml:ns:xmpp-stanzas'
 
 xmpp_queue = Queue()
 xmpp_lock = Lock()
@@ -370,6 +371,19 @@ class Transport:
                             del conv['connected_jids'][event.getFrom()]
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_FEATURE_NOT_IMPLEMENTED']))
+                else:
+                    # Conversation was not found
+                    # See: XEP-0045: Multi-User Chat -> 7.2.7 Members-Only Rooms
+                    # -> Example 29. Service Denies Access Because User Is Not on Member List:
+                    # http://xmpp.org/extensions/xep-0045.html#enter-members
+                    error_node = Node('error', {'by': '%s@%s' % (conv_id, config.confjid),
+                                                'type': 'auth'})
+                    error_node.addChild('registration-required', namespace=NS_XMPP_STANZAS)
+                    p = Presence(frm=event.getTo(),
+                                 to=event.getFrom(),
+                                 typ='error',
+                                 payload=[error_node])
+                    self.jabber.send(p)
         else:
             # Need to add auto-unsubscribe on probe events here.
             if event.getType() == 'probe':
