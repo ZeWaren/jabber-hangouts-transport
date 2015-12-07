@@ -162,6 +162,13 @@ class HangupsThread(threading.Thread):
                                        'recipient_jid': message['sender_jid']})
 
     @asyncio.coroutine
+    def conversation_rename(self, message):
+        """XMPP renamed a conversation."""
+        conv = self.conv_list.get_from_sha1_id(message['conv_id'])
+        if conv and message['new_name'] != '':
+            yield from conv.rename(message['new_name'])
+
+    @asyncio.coroutine
     def on_message(self, message):
         """Receive a message from XMPP"""
         if message['what'] == 'disconnect':
@@ -178,6 +185,8 @@ class HangupsThread(threading.Thread):
             yield from self.typing_notification(message)
         elif message['what'] == 'conversation_history_request':
             yield from self.conversation_history_request(message)
+        elif message['what'] == 'conversation_rename':
+            yield from self.conversation_rename(message)
 
     @asyncio.coroutine
     def on_connect(self):
@@ -270,6 +279,11 @@ class HangupsThread(threading.Thread):
                                            'conv_id': conv.id_sha1,
                                            'gaia_id': user.id_.gaia_id,
                                            'message': conv_event.text})
+        elif isinstance(conv_event, RenameEvent):
+            if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
+                self.send_message_to_xmpp({'what': 'conversation_rename',
+                                           'conv_id': conv.id_sha1,
+                                           'new_name': conv_event.new_name})
 
     def on_typing(self, typing_message):
         """Receive typing notification from Hangouts, and forward it to XMPP."""

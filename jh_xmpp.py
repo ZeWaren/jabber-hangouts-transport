@@ -159,7 +159,8 @@ class Transport:
                                   'features': [NS_MUC, NS_VCARD]}
                         data = {'muc#roominfo_description': conv['topic'],
                                 'muc#roominfo_subject': conv['topic'],
-                                'muc#roominfo_occupants': len(conv['user_list'])}
+                                'muc#roominfo_occupants': len(conv['user_list']),
+                                'muc#roomconfig_changesubject': 1}
                         info = DataForm(typ='result', data=data)
                         field = info.setField('FORM_TYPE')
                         field.setType('hidden')
@@ -424,16 +425,18 @@ class Transport:
 
                 elif event.getTo().getDomain() == config.confjid:
                     # Message is from a multi-user chat.
-                    if event.getBody() is None:
-                        return
-                    if event.getSubject():
-                        # We currently do not support changing the subject.
-                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_IMPLEMENTED']))
-                        return
-                    if event.getTo().getResource() is None or event.getTo().getResource() == '':
-                        conv_id = event.getTo().getNode()
-                        if conv_id in self.userlist[fromstripped]['conv_list']:
-                            # Conversation is found in the list: forward message to the Hangouts thread.
+                    conv_id = event.getTo().getNode()
+                    if conv_id in self.userlist[fromstripped]['conv_list']:
+                        # Conversation is found in the list.
+
+                        if event.getBody() is None and event.getSubject():
+                            # Subject change request
+                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_rename',
+                                                                                   'conv_id': conv_id,
+                                                                                   'new_name': event.getSubject()})
+                        if (event.getBody() is not None and event.getBody() != '')\
+                                and (event.getTo().getResource() is None or event.getTo().getResource() == ''):
+                            # Regular message
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                                    'type': 'group',
                                                                                    'conv_id': conv_id,
@@ -731,6 +734,7 @@ class Transport:
                 else:
                     m.setTag('paused', namespace=NS_CHATSTATES)
                 self.jabber.send(m)
+
         elif message['what'] == 'conversation_history':
             conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
             if message['recipient_jid'] in conv['connected_jids']:
@@ -763,6 +767,28 @@ class Transport:
                                       'stamp': event['timestamp'].isoformat()},
                                namespace=NS_DELAY)
                     self.jabber.send(m)
+
+                # The room subject can only be sent after the history. Send it here.
+                # See: XEP-0045: Multi-User Chat -> 7.2.16 Room Subject:
+                # http://xmpp.org/extensions/xep-0045.html#enter-subject
+                m = Message(typ='groupchat',
+                            frm='%s@%s' % (message['conv_id'], config.confjid),
+                            to=message['recipient_jid'],
+                            subject=conv['topic'])
+                self.jabber.send(m)
+
+        elif message['what'] == 'conversation_rename':
+            # Group chat was renamed
+            if message['conv_id'] in self.userlist[fromjid]['conv_list']:
+                conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
+                conv['topic'] = message['new_name']
+                for ajid in conv['connected_jids']:
+                    m = Message(typ='groupchat',
+                                frm='%s@%s' % (message['conv_id'], config.confjid),
+                                to=ajid,
+                                subject=message['new_name'])
+                    self.jabber.send(m)
+
         else:
             jh_hangups.hangups_manager.send_message(message['jid'], {'what': 'test'})
 
