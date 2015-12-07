@@ -433,6 +433,7 @@ class Transport:
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                                    'type': 'one_to_one',
                                                                                    'gaia_id': event.getTo().getNode(),
+                                                                                   'sender_jid': from_jid,
                                                                                    'message': event.getBody()})
                         else:
                             # Unknown type
@@ -455,6 +456,7 @@ class Transport:
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                                    'type': 'group',
                                                                                    'conv_id': conv_id,
+                                                                                   'sender_jid': from_jid,
                                                                                    'message': event.getBody()})
             else:
                 # A message was received from someone who was not registered
@@ -819,6 +821,16 @@ class Transport:
                                 subject=message['new_name'])
                     self.jabber.send(m)
 
+        elif message['what'] == 'conversation_add':
+            # Group chat was created/found: add it to the list
+            hobj = self.userlist[fromjid]
+            conv_id = message['conv']['conv_id']
+
+            hobj['conv_list'][conv_id] = message['conv']
+            conv = hobj['conv_list'][conv_id]
+            conv['connected_jids'] = {}
+            conv['invited_jids'] = {}
+
         elif message['what'] == 'conversation_membership_change':
             # Members were added or removed from group chat
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
@@ -854,6 +866,21 @@ class Transport:
                                                           affiliation='member',
                                                           jid='%s@%s' % (gaia_id, config.jid))])
                             self.jabber.send(p)
+
+        elif message['what'] == 'chat_message_error':
+            # A chat message from XMPP was not delivered.
+            if message['conv_id'] in self.userlist[fromjid]['conv_list']:
+                error_node = Node('error', {'type': 'cancel', 'code': 503})
+                error_node.addChild('service-unavailable', namespace=NS_XMPP_STANZAS)
+                if message['type'] == 'one_to_one':
+                    frm = '%s@%s' % (message['gaia_id'], config.jid),
+                else:
+                    frm = '%s@%s' % (message['conv_id'], config.confjid),
+                m = Message(typ='error',
+                            frm=frm,
+                            to=message['recipient_jid'],
+                            body=message['message'], payload=[error_node])
+                self.jabber.send(m)
 
         else:
             jh_hangups.hangups_manager.send_message(message['jid'], {'what': 'test'})

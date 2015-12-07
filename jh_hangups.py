@@ -1,13 +1,16 @@
 import asyncio
 import sys
 import threading
+import logging
 
 from hangups.auth import GoogleAuthError
 import hangups.hangouts_pb2 as hangouts_pb2
 from hangups.conversation_event import ChatMessageEvent, RenameEvent, MembershipChangeEvent
+from hangups.exceptions import NetworkError
 import hangups
 
 hangups_manager = None
+logger = logging.getLogger(__name__)
 
 
 def presence_to_status(presence):
@@ -69,6 +72,7 @@ class HangupsThread(threading.Thread):
         self.loop = None
         self.client = None
         self.type = None
+        self.known_conservations = set() # Maintain a list of conversations sent to XMPP
 
     def run(self):
         """Start the main loop."""
@@ -112,12 +116,28 @@ class HangupsThread(threading.Thread):
             conv = self.conv_list.get_one_to_one_with_user(message['gaia_id'])
             if conv:
                 segments = hangups.ChatMessageSegment.from_str(message['message'])
-                yield from conv.send_message(segments)
+                try:
+                    yield from conv.send_message(segments)
+                except NetworkError as e:
+                    # Hangouts refused our message: warn XMPP.
+                    self.send_message_to_xmpp({'what': 'chat_message_error',
+                                               'type': 'one_to_one',
+                                               'gaia_id': message['gaia_id'],
+                                               'message': 'Failed to send message. Reason: {}.'.format(e),
+                                               'recipient_jid': message['sender_jid']})
         elif message['type'] == 'group':
             conv = self.conv_list.get_from_sha1_id(message['conv_id'])
             if conv:
                 segments = hangups.ChatMessageSegment.from_str(message['message'])
-                yield from conv.send_message(segments)
+                try:
+                    yield from conv.send_message(segments)
+                except NetworkError as e:
+                    # Hangouts refused our message: warn XMPP.
+                    self.send_message_to_xmpp({'what': 'chat_message_error',
+                                               'type': 'group',
+                                               'conv_id': message['conv_id'],
+                                               'message': 'Failed to send message. Reason: {}.'.format(e),
+                                               'recipient_jid': message['sender_jid']})
 
     @asyncio.coroutine
     def typing_notification(self, message):
@@ -189,22 +209,25 @@ class HangupsThread(threading.Thread):
     @asyncio.coroutine
     def on_message(self, message):
         """Receive a message from XMPP"""
-        if message['what'] == 'disconnect':
-            self.set_state('disconnected')
-            yield from self.client.disconnect()
-            self.loop.stop()
-        elif message['what'] == 'connect':
-            self.set_state('connected')
-        elif message['what'] == 'set_presence':
-            self.set_presence(message['type'], message['show'])
-        elif message['what'] == 'chat_message':
-            yield from self.chat_message(message)
-        elif message['what'] == 'typing_notification':
-            yield from self.typing_notification(message)
-        elif message['what'] == 'conversation_history_request':
-            yield from self.conversation_history_request(message)
-        elif message['what'] == 'conversation_rename':
-            yield from self.conversation_rename(message)
+        try:
+            if message['what'] == 'disconnect':
+                self.set_state('disconnected')
+                yield from self.client.disconnect()
+                self.loop.stop()
+            elif message['what'] == 'connect':
+                self.set_state('connected')
+            elif message['what'] == 'set_presence':
+                self.set_presence(message['type'], message['show'])
+            elif message['what'] == 'chat_message':
+                yield from self.chat_message(message)
+            elif message['what'] == 'typing_notification':
+                yield from self.typing_notification(message)
+            elif message['what'] == 'conversation_history_request':
+                yield from self.conversation_history_request(message)
+            elif message['what'] == 'conversation_rename':
+                yield from self.conversation_rename(message)
+        except NetworkError as e:
+            logger.exception(e)
 
     @asyncio.coroutine
     def on_connect(self):
@@ -253,6 +276,7 @@ class HangupsThread(threading.Thread):
         # Send conversation list to XMPP
         conv_list_dict = {}
         for conv in self.conv_list.get_all():
+            self.known_conservations.add(conv.id_)
             if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
                 user_list = {}
                 self_gaia_id = None
@@ -283,6 +307,28 @@ class HangupsThread(threading.Thread):
         """Receive event from Hangouts."""
         conv = self.conv_list.get(conv_event.conversation_id)
         user = conv.get_user(conv_event.user_id)
+
+        if conv.id_ not in self.known_conservations:
+            # Conversation is not in the list of conversations that XMPP is aware of: send it beforehand.
+            self.known_conservations.add(conv.id_)
+
+            user_list = {}
+            self_gaia_id = None
+            for user in conv.users:
+                user_list[user.id_.gaia_id] = user.full_name
+                if user.is_self:
+                    # XMPP needs to know which user is itself.
+                    self_gaia_id = user.id_.gaia_id
+
+            conv_dict = {
+                'conv_id': conv.id_sha1,
+                'topic': conv.name,
+                'user_list': user_list,
+                'self_id': self_gaia_id,
+            }
+            self.send_message_to_xmpp({'what': 'conversation_add',
+                                       'conv': conv_dict})
+
         if isinstance(conv_event, hangups.ChatMessageEvent):
             # Event is a chat message: foward it to XMPP.
             if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_ONE_TO_ONE:
@@ -298,6 +344,7 @@ class HangupsThread(threading.Thread):
                                            'gaia_id': user.id_.gaia_id,
                                            'message': conv_event.text})
         elif isinstance(conv_event, RenameEvent):
+            # Conversation was renamed
             if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
                 self.send_message_to_xmpp({'what': 'conversation_rename',
                                            'conv_id': conv.id_sha1,
