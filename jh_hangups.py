@@ -154,6 +154,24 @@ class HangupsThread(threading.Thread):
                         'new_name': event.new_name,
                         'timestamp': event.timestamp,
                     })
+                elif isinstance(event, MembershipChangeEvent):
+                    event_users = [conv.get_user(user_id) for user_id in event.participant_ids]
+                    if event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_JOIN:
+                        for user in event_users:
+                            inviter = conv.get_user(event.user_id)
+                            history.append({
+                                'type': 'invite',
+                                'inviter': inviter.full_name,
+                                'invited': user.full_name,
+                                'timestamp': event.timestamp,
+                            })
+                    elif event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_LEAVE:
+                        for user in event_users:
+                            history.append({
+                                'type': 'departure',
+                                'departed': user.full_name,
+                                'timestamp': event.timestamp,
+                            })
 
             # Send data to XMPP
             self.send_message_to_xmpp({'what': 'conversation_history',
@@ -284,6 +302,25 @@ class HangupsThread(threading.Thread):
                 self.send_message_to_xmpp({'what': 'conversation_rename',
                                            'conv_id': conv.id_sha1,
                                            'new_name': conv_event.new_name})
+        elif isinstance(conv_event, MembershipChangeEvent):
+            # Members joined or left a conversation
+            if conv._conversation.type == hangouts_pb2.CONVERSATION_TYPE_GROUP:
+                message = {'what': 'conversation_membership_change',
+                           'conv_id': conv.id_sha1}
+
+                event_users = [conv.get_user(user_id) for user_id in conv_event.participant_ids]
+                if conv_event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_JOIN:
+                    new_members = {}
+                    for user in event_users:
+                        new_members[user.id_.gaia_id] = user.full_name
+                    message['new_members'] = new_members
+                elif conv_event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_LEAVE:
+                    old_members = {}
+                    for user in event_users:
+                        old_members[user.id_.gaia_id] = user.full_name
+                    message['old_members'] = old_members
+
+                self.send_message_to_xmpp(message)
 
     def on_typing(self, typing_message):
         """Receive typing notification from Hangouts, and forward it to XMPP."""

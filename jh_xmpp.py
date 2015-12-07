@@ -744,7 +744,10 @@ class Transport:
                     # http://xmpp.org/extensions/xep-0045.html#enter-history
                     if event['type'] == 'message':
                         # Regular chat message
-                        nick = conv['user_list'][event['gaia_id']] if event['gaia_id'] in conv['user_list'] else "Unknown"
+                        if event['gaia_id'] in conv['user_list']:
+                            nick = conv['user_list'][event['gaia_id']]
+                        else:
+                            nick = 'Unknown (%s)' % (event['gaia_id'],)
                         m = Message(typ='groupchat',
                                     frm='%s@%s/%s' % (message['conv_id'], config.confjid, nick),
                                     to=message['recipient_jid'],
@@ -754,7 +757,19 @@ class Transport:
                         m = Message(typ='groupchat',
                                     frm='%s@%s' % (message['conv_id'], config.confjid),
                                     to=message['recipient_jid'],
-                                    body='Conversation was renamed to: %s' % (event['new_name']))
+                                    body='Conversation was renamed to: %s.' % (event['new_name']))
+                    elif event['type'] == 'invite':
+                        # Member has joined
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    to=message['recipient_jid'],
+                                    body='%s has invited %s.' % (event['inviter'], event['invited']))
+                    elif event['type'] == 'departure':
+                        # Member has left
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    to=message['recipient_jid'],
+                                    body='%s has left.' % (event['departed'],))
                     else:
                         # Unknown
                         m = Message(typ='groupchat',
@@ -788,6 +803,42 @@ class Transport:
                                 to=ajid,
                                 subject=message['new_name'])
                     self.jabber.send(m)
+
+        elif message['what'] == 'conversation_membership_change':
+            # Members were added or removed from group chat
+            if message['conv_id'] in self.userlist[fromjid]['conv_list']:
+                conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
+                if 'new_members' in message:
+                    # Members were added
+                    for gaia_id in message['new_members']:
+                        conv['user_list'][gaia_id] = message['new_members'][gaia_id]
+
+                        # Send presence information to connected resources
+                        for ajid in conv['connected_jids']:
+                            p = Presence(frm='%s@%s/%s' % (message['conv_id'],
+                                                           config.confjid, message['new_members'][gaia_id]),
+                                         to=ajid,
+                                         payload=[MucUser(role='participant',
+                                                          affiliation='member',
+                                                          jid='%s@%s' % (gaia_id, config.jid))])
+                            self.jabber.send(p)
+
+                if 'old_members' in message:
+                    # Members were removed
+                    for gaia_id in message['old_members']:
+                        if gaia_id in conv['user_list']:
+                            del conv['user_list'][gaia_id]
+
+                        # Send presence information to connected resources
+                        for ajid in conv['connected_jids']:
+                            p = Presence(frm='%s@%s/%s' % (message['conv_id'],
+                                                           config.confjid, message['old_members'][gaia_id]),
+                                         typ='unavailable',
+                                         to=ajid,
+                                         payload=[MucUser(role='none',
+                                                          affiliation='member',
+                                                          jid='%s@%s' % (gaia_id, config.jid))])
+                            self.jabber.send(p)
 
         else:
             jh_hangups.hangups_manager.send_message(message['jid'], {'what': 'test'})

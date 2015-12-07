@@ -126,7 +126,7 @@ class UserList(object):
         except KeyError:
             logger.warning('UserList returning unknown User for UserID {}'
                            .format(user_id))
-            return User(user_id, DEFAULT_NAME, None, None, [], [], False, None)
+            return User(user_id, DEFAULT_NAME + ' (' + user_id.gaia_id + ')', None, None, [], [], False, None)
 
     def get_all(self):
         """Returns all the users known"""
