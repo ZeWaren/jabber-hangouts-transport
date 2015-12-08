@@ -116,4 +116,12 @@ if __name__ == '__main__':
     jh_xmpp.userfile.close()
     connection.disconnect()
     print("Main thread stopped")
+
+    if len(jh_hangups.hangups_manager.hangouts_threads) > 0:
+        print('Tranport terminated, but Hangouts threads are still active.')
+        for jid in jh_hangups.hangups_manager.hangouts_threads:
+            jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
+
+    # Join the remaining threads and exit.
     sys.exit(0)
+
