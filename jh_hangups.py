@@ -3,7 +3,7 @@ import sys
 import threading
 import logging
 
-from hangups.auth import GoogleAuthError
+from hangups.auth import GoogleAuthError, OAUTH2_LOGIN_URL
 import hangups.hangouts_pb2 as hangouts_pb2
 from hangups.conversation_event import ChatMessageEvent, RenameEvent, MembershipChangeEvent
 from hangups.exceptions import NetworkError
@@ -11,6 +11,11 @@ import hangups
 
 hangups_manager = None
 logger = logging.getLogger(__name__)
+
+
+def get_oauth_url():
+    """Return the URL the user must follow to obtain a refresh token"""
+    return OAUTH2_LOGIN_URL
 
 
 def presence_to_status(presence):
@@ -27,9 +32,9 @@ class HangupsManager:
     """Manage the different Hangouts threads."""
     hangouts_threads = {}
 
-    def spawn_thread(self, jid, xmpp_queue):
+    def spawn_thread(self, jid, xmpp_queue, refresh_token_filename, oauth_code=""):
         """Create a new Hangouts connection"""
-        thread = HangupsThread(jid, xmpp_queue)
+        thread = HangupsThread(jid, xmpp_queue, refresh_token_filename, oauth_code=oauth_code)
         self.hangouts_threads[jid] = thread
         thread.start()
 
@@ -54,14 +59,15 @@ class HangupsManager:
 class HangupsThread(threading.Thread):
     """Represent a connection with Hangouts."""
 
-    def __init__(self, jid, xmpp_queue):
+    def __init__(self, jid, xmpp_queue, refresh_token_filename, oauth_code=""):
         super().__init__()
 
         self.jid = jid
+        self.refresh_token_filename = refresh_token_filename
         self.xmpp_queue = xmpp_queue
 
         try:
-            self.cookies = hangups.auth.get_auth_stdin('refresh_token.txt')
+            self.cookies = hangups.auth.get_auth(lambda: oauth_code, self.refresh_token_filename)
         except hangups.GoogleAuthError as e:
             sys.exit('Login failed ({})'.format(e))
 
@@ -82,6 +88,7 @@ class HangupsThread(threading.Thread):
 
         self.client = hangups.Client(self.cookies)
         self.client.on_connect.add_observer(self.on_connect)
+        self.client.on_disconnect.add_observer(self.on_disconnect)
 
         self.set_state('disconnected')
         self.loop.run_until_complete(self.client.connect())
@@ -231,7 +238,8 @@ class HangupsThread(threading.Thread):
 
     @asyncio.coroutine
     def on_connect(self):
-        """Handle connecting for the first time."""
+        """Hangouts is connected."""
+        self.send_message_to_xmpp({'what': 'connected'})
 
         # Get the list of users and conversations
         self.user_list, self.conv_list = (
@@ -281,7 +289,8 @@ class HangupsThread(threading.Thread):
                 user_list = {}
                 self_gaia_id = None
                 for user in conv.users:
-                    user_list[user.id_.gaia_id] = user_list_dict[user.id_.gaia_id]['full_name'] if user.id_.gaia_id in user_list_dict else user.id_.gaia_id
+                    user_list[user.id_.gaia_id] = user_list_dict[user.id_.gaia_id]['full_name']\
+                        if user.id_.gaia_id in user_list_dict else user.id_.gaia_id
                     if user.is_self:
                         # XMPP needs to know which user is itself.
                         self_gaia_id = user.id_.gaia_id
@@ -294,6 +303,11 @@ class HangupsThread(threading.Thread):
         self.send_message_to_xmpp({'what': 'conv_list',
                                    'conv_list': conv_list_dict,
                                    'self_gaia': self.user_list._self_user.id_.gaia_id})
+
+    @asyncio.coroutine
+    def on_disconnect(self):
+        """Hangouts is disconnected"""
+        self.send_message_to_xmpp({'what': 'disconnected'})
 
     @asyncio.coroutine
     def on_presence(self, user, presence):

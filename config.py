@@ -20,4 +20,5 @@ debugFile = ""
 
 dumpProtocol = True
 
+refreshTokenDirectory = "/var/spool/jabberhangouts/refresh_tokens"
 spoolFile = "/var/spool/jabberhangouts/spoolfile"

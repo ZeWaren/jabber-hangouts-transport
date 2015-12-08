@@ -5,6 +5,8 @@ from multiprocessing import Queue, Lock
 import queue
 import urllib.request
 import base64
+import hashlib
+import os
 
 import config
 import xmpp
@@ -200,40 +202,13 @@ class Transport:
                 # Main JID of the transport
                 if event.getType() == 'subscribed':
                     if fromstripped in self.userlist:
-                        hobj = self.userlist[fromstripped]
                         if event.getTo() == config.jid:
-                            conf = userfile[fromstripped]
-                            conf['subscribed'] = True
-                            userfile[fromstripped] = conf
-                            userfile.sync()
+                            # User has subscribed to the transport: send the list of contacts:
+                            for user in self.userlist[fromstripped]['user_list']:
+                                self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
+                                                          to=fromjid,
+                                                          typ='subscribe'))
 
-                            # For each new user check if rosterx is adversited then do the rosterx message, else send a
-                            # truckload of subscribes.
-                            # Part 1, parse the features out of the disco result
-                            features = []
-                            if event.getFrom().getStripped() in self.discoresults:
-                                discoresult = self.discoresults[event.getFrom().getStripped().encode('utf8')]
-                                if discoresult.getTag('query').getTag('feature'):
-                                    features.append(discoresult.getTag('query').getAttr('var'))
-                            # Part 2, make the rosterX message
-                            if NS_ROSTERX in features:
-                                m = Message(to=fromjid, frm=config.jid, subject='Yahoo Roster Items',
-                                            body='Items from Yahoo Roster')
-                                p = m.setTag('x', namespace=NS_ROSTERX)
-                                for user in hobj['user_list']:
-                                    p.addChild(
-                                        name='item',
-                                        attrs={'jid': '%s@%s' % (user, config.jid),
-                                               'name': hobj['user_list']['full_name'],
-                                               'action': 'add'})
-                                self.jabber.send(m)
-                                if config.dumpProtocol:
-                                    print(m)
-                            else:
-                                for user in hobj['user_list']:
-                                    self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
-                                                              to=fromjid,
-                                                              typ='subscribe'))
                             m = Presence(to=fromjid, frm=config.jid)
                             self.jabber.send(m)
                     else:
@@ -242,15 +217,16 @@ class Transport:
                 elif event.getType() == 'subscribe':
                     if fromstripped in self.userlist:
                         if event.getTo() == config.jid:
-                            conf = userfile[fromstripped]
-                            conf['usubscribed'] = True
-                            userfile[fromstripped] = conf
-                            userfile.sync()
+                            # Resource subscribed to the transport: send reply.
                             m = Presence(to=fromjid, frm=config.jid, typ='subscribed')
                             self.jabber.send(m)
                         else:
-                            # add new user case.
-                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='subscribed'))
+                            # User tries to add a new contact.
+                            # This is currently unsupported.
+                            # See: XEP-0100: Gateway Interaction -> 5. Legacy User Use Cases -> 5.1 Add Contact
+                            # -> 5.1.2 Alternate Flows -> Example 49. Jabber User Denies Subscription Request:
+                            # http://www.xmpp.org/extensions/xep-0100.html#usecases-legacy-add-alt
+                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='unsubscribed'))
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
 
@@ -261,37 +237,7 @@ class Transport:
                 elif event.getType() is None or event.getType() == 'available' or event.getType() == 'invisible':
                     if event.getTo() == config.jid:
                         # Transport user has become connected
-                        if fromstripped in self.userlist:
-                            # Another resource is already connected:
-                            # add the new resource to the list
-                            self.userlist[fromstripped]['connected_jids'][fromjid] = True
-                            self.xmpp_presence_do_update(event, fromstripped)
-                            # Send presence information of connected contacts
-                            for user in self.userlist[fromstripped]['user_list']:
-                                self.send_presence_from_status(fromjid,
-                                                               '%s@%s' % (user, config.jid),
-                                                               self.userlist[fromstripped]['user_list'][user]['status'])
-                        else:
-                            # No other resource of this user are already connected:
-                            # check that the user is registered and create a hangout client thread
-                            if fromstripped not in userfile:
-                                self.jabber.send(Message(to=fromstripped,
-                                                         subject='Transport Configuration Error',
-                                                         body='The transport has found that your configuration could'
-                                                              ' not be loaded. Please re-register with the transport'))
-                                del userfile[fromstripped]
-                                userfile.sync()
-                                return
-
-                            # Spawn a new Hangout client and initialize a new userlist entry
-                            jh_hangups.hangups_manager.spawn_thread(fromstripped, xmpp_queue)
-                            hobj = {'user_list': {},
-                                    'conv_list': {},
-                                    'connected_jids': {event.getFrom(): True}}
-                            self.userlist[fromstripped] = hobj
-
-                            # Send presence transport information
-                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom()))
+                        self.xmpp_resource_join(event.getFrom())
 
                 elif event.getType() == 'unavailable':
                     if event.getTo() == config.jid:
@@ -396,6 +342,53 @@ class Transport:
                 self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='unsubscribed'))
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
+
+    def xmpp_resource_join(self, jid):
+        """A new resource has subscribed to the transport. Create a Hangouts thread if none exist and
+        send the presence information."""
+        fromjid = jid
+        fromstripped = fromjid.getStripped()
+
+        if fromstripped in self.userlist:
+            # Another resource is already connected:
+            # add the new resource to the list.
+            self.userlist[fromstripped]['connected_jids'][fromjid] = True
+            # Send presence information of connected contacts.
+            for user in self.userlist[fromstripped]['user_list']:
+                self.send_presence_from_status(fromjid,
+                                               '%s@%s' % (user, config.jid),
+                                               self.userlist[fromstripped]['user_list'][user]['status'])
+        else:
+            # No other resource of this user are already connected:
+            # check that the user is registered and create a hangout client thread.
+            if fromstripped not in self.userfile:
+                self.jabber.send(Message(to=fromstripped,
+                                         subject='Transport Configuration Error',
+                                         body='The transport has found that your configuration could'
+                                              ' not be loaded. Please re-register with the transport'))
+                del self.userfile[fromstripped]
+                self.userfile.sync()
+                return
+
+            # We store the refresh token in a file named with the sha1 of the jid, to be sure that that name does not
+            # contain any invalid or malicious characters.
+            hash_object = hashlib.sha1(fromstripped.encode('utf-8'))
+            refresh_token_filename = os.path.join(config.refreshTokenDirectory, hash_object.hexdigest())
+            oauth_code =\
+                self.userfile[fromstripped]['oauth_code'] if 'oauth_code' in self.userfile[fromstripped] else ''
+
+            # Spawn a new Hangout client and initialize a new userlist entry.
+            jh_hangups.hangups_manager.spawn_thread(fromstripped,
+                                                    xmpp_queue,
+                                                    refresh_token_filename,
+                                                    oauth_code=oauth_code)
+            hobj = {'user_list': {},
+                    'conv_list': {},
+                    'connected_jids': {fromjid: True}}
+            self.userlist[fromstripped] = hobj
+
+            # Send presence transport information.
+            self.jabber.send(Presence(frm=config.jid, to=fromjid))
 
     def xmpp_presence_do_update(self, event, fromstripped):
         jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'set_presence',
@@ -552,32 +545,27 @@ class Transport:
 
     def xmpp_iq_register_get(self, con, event):
         if event.getTo() == config.jid:
-            url = ["http://example.com/?oauth=sdfsdfsdfsdfsdf"]
-            auth_token = []
+            # See: XEP-0100: Gateway Interaction -> 4. Jabber User Use Cases -> 4.1 Register -> 4.1.1 Primary Flow:
+            # http://www.xmpp.org/extensions/xep-0100.html#usecases-jabber-register-pri
+            url = jh_hangups.get_oauth_url()
             fromjid = event.getFrom().getStripped()
             query_payload = [Node('instructions',
-                                  payload='Please open this URL in a webbrowser and copy the result code here:')]
+                                  payload='Please open this URL in a webbrowser, follow the instruction and copy '
+                                          'the result code here:'),
+                             Node('url', payload=[url])]
+
             if fromjid in self.userfile:
-                try:
-                    url = userfile[fromjid]['url']
-                    auth_token = userfile[fromjid]['auth_token']
-                except:
-                    pass
+                # User is already registered
                 query_payload += [
-                    Node('url', payload=url),
-                    Node('password', payload=auth_token),
+                    Node('password', payload=['[your code was consumed]']),
                     Node('registered')]
             else:
-                query_payload += [
-                    Node('url', payload=url),
-                    Node('password')]
+                query_payload += [Node('password')]
+
             m = event.buildReply('result')
             m.setQueryNS(NS_REGISTER)
             m.setQueryPayload(query_payload)
             self.jabber.send(m)
-            # Add disco#info check to client requesting for rosterx support
-            i = Iq(to=event.getFrom(), frm=config.jid, typ='get', queryNS=NS_DISCO_INFO)
-            self.jabber.send(i)
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
         raise NodeProcessed
@@ -585,44 +573,84 @@ class Transport:
     def xmpp_iq_register_set(self, con, event):
         if event.getTo() == config.jid:
             remove = False
-            url = False
-            auth_token = False
-            fromjid = event.getFrom().getStripped()
+            oauth_code = None
+            fromjid = event.getFrom()
+            fromstripped = event.getFrom().getStripped()
+
+            # Get input from event.
             query = event.getTag('query')
-            if query.getTag('url'):
-                url = query.getTagData('url')
             if query.getTag('password'):
-                auth_token = query.getTagData('password')
+                oauth_code = query.getTagData('password')
             if query.getTag('remove'):
                 remove = True
-            if not remove and url and auth_token:
-                if fromjid in self.userfile:
-                    conf = self.userfile[fromjid]
+
+            if not remove and oauth_code:
+                # User creates/updates registration..
+
+                # If account already exist, fetch its current config:
+                if fromstripped in self.userfile:
+                    conf = self.userfile[fromstripped]
                 else:
                     conf = {}
-                conf['url'] = url
-                conf['auth_token'] = auth_token
-                print('Conf: ', conf)
-                self.userfile[fromjid] = conf
+
+                # Update account file.
+                conf['oauth_code'] = oauth_code  # I don't even know why we store this, since it cannot be used twice.
+                self.userfile[fromstripped] = conf
                 self.userfile.sync()
+
+                # Acknowledge event.
                 m = event.buildReply('result')
                 self.jabber.send(m)
-                self.userlist[fromjid] = {}
-                # TODO: Connect Hangouts here
-            elif remove and not url and not auth_token:
-                if fromjid in self.userlist:
-                    del self.userlist[fromjid]
-                if fromjid in self.userfile:
-                    del self.userfile[fromjid]
+
+                # If user is connected, disconnect them.
+                if fromstripped in self.userlist:
+                    # Stop the thread and send presence information for contacts.
+                    jh_hangups.hangups_manager.send_message(fromjid, {'what': 'disconnect'})
+                    jh_hangups.hangups_manager.remove_thread(fromjid)
+                    self.send_disconnected_presence_events(fromjid)
+
+                    # Remove the user from the user list.
+                    del self.userlist[fromstripped]
+
+                # Handle new resources subscription.
+                self.xmpp_resource_join(fromjid)
+
+                # Subscribe to user's presence.
+                m = Presence(to=fromjid, frm=config.jid, typ='subscribe')
+                self.jabber.send(m)
+
+            elif remove:
+                # User unregisters from the gateway.
+                # See: XEP-0100: Gateway Interaction ->  4.3. Unregister -> 4.3.1. Primary Flow:
+                # http://www.xmpp.org/extensions/xep-0100.html#usecases-jabber-unregister-pri
+
+                # If user is connected:
+                if fromstripped in self.userlist:
+                    # Stop the thread and send presence information for contacts.
+                    jh_hangups.hangups_manager.send_message(fromjid, {'what': 'disconnect'})
+                    jh_hangups.hangups_manager.remove_thread(fromjid)
+                    self.send_disconnected_presence_events(fromstripped)
+
+                    # Remove the user from the user list.
+                    del self.userlist[fromstripped]
+
+                # Remove the user from the account file.
+                if fromstripped in self.userfile:
+                    del self.userfile[fromstripped]
                     self.userfile.sync()
-                    m = event.buildReply('result')
-                    self.jabber.send(m)
-                    m = Presence(to=event.getFrom(), frm=config.jid, typ='unsubscribe')
-                    self.jabber.send(m)
-                    m = Presence(to=event.getFrom(), frm=config.jid, typ='unsubscribed')
-                    self.jabber.send(m)
-                else:
-                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+
+                # Acknowledge event.
+                m = event.buildReply('result')
+                self.jabber.send(m)
+
+                # Send presence information.
+                m = Presence(to=fromjid, frm=config.jid, typ='unsubscribe')
+                self.jabber.send(m)
+                m = Presence(to=fromjid, frm=config.jid, typ='unsubscribed')
+                self.jabber.send(m)
+                m = Presence(to=fromjid, frm=config.jid, typ='unavailable')
+                self.jabber.send(m)
+
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
         else:
@@ -634,17 +662,12 @@ class Transport:
         # stop and remove all the Hangouts threads,
         # and try to reconnect.
         for jid in list(self.userlist.keys()):
-            self.jabber.send(Presence(frm=config.jid, to=jid, typ="unavailable"))
+            # Send presence information.
+            self.send_disconnected_presence_events(jid)
 
             # Stop the thread.
             jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
             jh_hangups.hangups_manager.remove_thread(jid)
-
-            # Send presence information of all users, to prevent from still showing as connected in the clients.
-            for user in self.userlist[jid]['user_list']:
-                self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
-                                          to=jid,
-                                          typ="unavailable"))
 
             # Remove the connection information.
             hobj = self.userlist[jid]
@@ -654,6 +677,17 @@ class Transport:
         if not self.jabber.reconnectAndReauth():
             time.sleep(5)
             self.xmpp_connect()
+
+    def send_disconnected_presence_events(self, jid):
+        # Send presence information of the transport.
+        self.jabber.send(Presence(frm=config.jid, to=jid, typ="unavailable"))
+
+        # Send presence information of all users, to prevent from still showing as connected in the clients.
+        if jid in self.userlist:
+            for user in self.userlist[jid]['user_list']:
+                self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
+                                          to=jid,
+                                          typ="unavailable"))
 
     def send_presence(self, fromjid, jid, typ=None, show=None):
         self.jabber.send(Presence(frm=jid, to=fromjid, typ=typ, show=show))
@@ -675,6 +709,21 @@ class Transport:
             # Thread user is not in the list:
             # do not process the message.
             return
+
+        if message['what'] == 'connected':
+            # Hangouts is connected. Send presence information of the transport.
+            self.jabber.send(Presence(frm=config.jid, to=fromjid))
+
+            # If we're connected, this means that the oauth code was used. Remove it.
+            if 'oauth_code' in self.userfile[fromjid]:
+                conf = self.userfile[fromjid]
+                del conf['oauth_code']
+                self.userfile[fromjid] = conf
+                self.userfile.sync()
+
+        elif message['what'] == 'disconnected':
+            # Hangouts is disconnected.
+            self.send_disconnected_presence_events(fromjid)
 
         if message['what'] == 'user_list':
             # Receive the list of contacts:
