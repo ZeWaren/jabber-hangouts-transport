@@ -98,6 +98,7 @@ class HangupsThread(threading.Thread):
 
         self.set_state('disconnected')
         self.loop.run_until_complete(self.client.connect())
+        self.send_message_to_xmpp({'what': 'disconnected'})
         print("Hangup thread stopped")
 
     def call_soon_thread_safe(self, message):
