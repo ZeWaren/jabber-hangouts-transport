@@ -126,6 +126,13 @@ class HangupsThread(threading.Thread):
         """Receive a message from XMPP, and forward it to Hangouts."""
         if message['message'] is None:
             return
+
+        # Mark the client as active, so that other clients don't get notifications.
+        future = asyncio.async(self.client.set_active())
+        future.add_done_callback(lambda future: future.result())
+
+        conv = None
+
         if message['type'] == 'one_to_one':
             conv = self.conv_list.get_one_to_one_with_user(message['gaia_id'])
             if conv:
@@ -152,6 +159,11 @@ class HangupsThread(threading.Thread):
                                                'conv_id': message['conv_id'],
                                                'message': 'Failed to send message. Reason: {}.'.format(e),
                                                'recipient_jid': message['sender_jid']})
+
+        if conv:
+            # Mark the conversation's newest event as read.
+            future = asyncio.async(conv.update_read_timestamp())
+            future.add_done_callback(lambda future: future.result())
 
     @asyncio.coroutine
     def typing_notification(self, message):
