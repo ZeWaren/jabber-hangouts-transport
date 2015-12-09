@@ -341,6 +341,13 @@ class Transport:
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
 
+    @staticmethod
+    def get_refresh_token_filename(jid):
+            # We store the refresh token in a file named with the sha1 of the jid, to be sure that that name does not
+            # contain any invalid or malicious characters.
+            hash_object = hashlib.sha1(jid.encode('utf-8'))
+            return os.path.join(config.refreshTokenDirectory, hash_object.hexdigest())
+
     def xmpp_resource_join(self, jid):
         """A new resource has subscribed to the transport. Create a Hangouts thread if none exist and
         send the presence information."""
@@ -368,25 +375,34 @@ class Transport:
                 self.userfile.sync()
                 return
 
-            # We store the refresh token in a file named with the sha1 of the jid, to be sure that that name does not
-            # contain any invalid or malicious characters.
-            hash_object = hashlib.sha1(fromstripped.encode('utf-8'))
-            refresh_token_filename = os.path.join(config.refreshTokenDirectory, hash_object.hexdigest())
+            refresh_token_filename = self.get_refresh_token_filename(fromstripped)
             oauth_code =\
                 self.userfile[fromstripped]['oauth_code'] if 'oauth_code' in self.userfile[fromstripped] else ''
 
             # Spawn a new Hangout client and initialize a new userlist entry.
-            jh_hangups.hangups_manager.spawn_thread(fromstripped,
-                                                    xmpp_queue,
-                                                    refresh_token_filename,
-                                                    oauth_code=oauth_code)
-            hobj = {'user_list': {},
-                    'conv_list': {},
-                    'connected_jids': {fromjid: True}}
-            self.userlist[fromstripped] = hobj
+            try:
+                jh_hangups.hangups_manager.spawn_thread(fromstripped,
+                                                        xmpp_queue,
+                                                        refresh_token_filename,
+                                                        oauth_code=oauth_code)
+                hobj = {'user_list': {},
+                        'conv_list': {},
+                        'connected_jids': {fromjid: True}}
+                self.userlist[fromstripped] = hobj
 
-            # Send presence transport information.
-            self.jabber.send(Presence(frm=config.jid, to=fromjid))
+                # Send presence transport information.
+                self.jabber.send(Presence(frm=config.jid, to=fromjid))
+
+            except jh_hangups.HangupAuthError as e:
+                # Auth failed: warn the user.
+                error_node = Node('error', {'type': 'auth'})
+                error_node.addChild('not-authorized', namespace=NS_XMPP_STANZAS)
+
+                p = Presence(frm=config.jid, to=fromjid, typ='error', payload=[error_node])
+                m = Message(typ='error', frm=config.jid, to=fromjid, body='{}'.format(e), payload=[error_node])
+                self.jabber.send(p)
+                self.jabber.send(m)
+
 
     def xmpp_presence_do_update(self, event, fromstripped):
         jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'set_presence',

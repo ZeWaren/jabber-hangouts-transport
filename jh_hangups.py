@@ -28,6 +28,11 @@ def presence_to_status(presence):
     return status
 
 
+class HangupAuthError(Exception):
+
+    """Exception raised when auth fails."""
+
+
 class HangupsManager:
     """Manage the different Hangouts threads."""
     hangouts_threads = {}
@@ -69,7 +74,7 @@ class HangupsThread(threading.Thread):
         try:
             self.cookies = hangups.auth.get_auth(lambda: oauth_code, self.refresh_token_filename)
         except hangups.GoogleAuthError as e:
-            sys.exit('Login failed ({})'.format(e))
+            raise HangupAuthError('Login failed ({})'.format(e))
 
         self.conv_list = None
         self.user_list = None
