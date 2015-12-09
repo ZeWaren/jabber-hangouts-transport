@@ -3,7 +3,7 @@ import sys
 import threading
 import logging
 
-from hangups.auth import GoogleAuthError, OAUTH2_LOGIN_URL
+from hangups.auth import OAUTH2_LOGIN_URL
 import hangups.hangouts_pb2 as hangouts_pb2
 from hangups.conversation_event import ChatMessageEvent, RenameEvent, MembershipChangeEvent
 from hangups.exceptions import NetworkError
@@ -78,7 +78,7 @@ class HangupsThread(threading.Thread):
         self.loop = None
         self.client = None
         self.type = None
-        self.known_conservations = set() # Maintain a list of conversations sent to XMPP
+        self.known_conservations = set()  # Maintain a list of conversations sent to XMPP
 
     def run(self):
         """Start the main loop."""

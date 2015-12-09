@@ -76,7 +76,6 @@ class Transport:
 
     # Disco Handlers
     def xmpp_base_disco(self, con, event, ev_type):
-        fromjid = event.getFrom().__str__()
         fromstripped = event.getFrom().getStripped()
         to = event.getTo()
         node = event.getQuerynode()
@@ -117,7 +116,7 @@ class Transport:
                     # Declare the conference node
                     return {'ids': [{'category': 'conference',
                                      'type': 'text',
-                                     'name': config.discoName + ' Group Chats'}],
+                                     'name': config.discoName + ' group chats'}],
                             'features': [NS_MUC, NS_MUC_UNIQUE, NS_VERSION, NS_DISCO_INFO, NS_DISCO_ITEMS]}
                 if ev_type == 'items':
                     # Return a list of the available conversations
@@ -193,11 +192,10 @@ class Transport:
 
     # XMPP Handlers
     def xmpp_presence(self, con, event):
-        hobj = None
         fromjid = event.getFrom()
         fromstripped = fromjid.getStripped()
 
-        if fromstripped in userfile:
+        if fromstripped in self.userfile:
             if event.getTo().getDomain() == config.jid:
                 # Main JID of the transport
                 if event.getType() == 'subscribed':
@@ -475,7 +473,7 @@ class Transport:
     def xmpp_iq_vcard(self, con, event):
         fromjid = event.getFrom()
         fromstripped = fromjid.getStripped()
-        if fromstripped in userfile:
+        if fromstripped in self.userfile:
             if event.getTo() == config.jid:
                 # Main JID of the transport.
                 m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
@@ -976,6 +974,7 @@ class XMPPQueueThread(threading.Thread):
                 self.transport.handle_message(message)
             finally:
                 xmpp_lock.release()
+
         print("Queue thread stopped")
 
 
