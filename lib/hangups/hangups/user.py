@@ -23,6 +23,9 @@ class User(object):
     first_name from the full_name, or setting both to DEFAULT_NAME.
     """
 
+    # We maintain a list of full names, to be able to assign new User objects a unique one.
+    full_name_list = {}
+
     def __init__(self, user_id, full_name, first_name, photo_url, emails, phones,
                  is_self, presence):
         """Initialize a User."""
@@ -30,11 +33,41 @@ class User(object):
         self.full_name = full_name if full_name != '' else DEFAULT_NAME
         self.first_name = (first_name if first_name != ''
                            else self.full_name.split()[0])
+        self.unique_full_name = self.create_unique_full_name()
         self.photo_url = photo_url
         self.emails = emails
         self.phones = phones
         self.is_self = is_self
         self.presence = presence
+
+    def create_unique_full_name(self):
+        """Create a full name that is unique across every user met so far."""
+        if self.full_name in self.full_name_list:
+            if self.full_name_list[self.full_name] == self.id_:
+                # We are already in the list.
+                return self.full_name
+        else:
+            self.full_name_list[self.full_name] = self.id_
+            return self.full_name
+
+        # Full name is already taken:
+        # Increment a number until we find an empty slot:
+        # 1: Xavier Pichard (2)
+        # 2: Xavier Pichard (3)
+        # 3: Xavier Pichard (4)
+        # ...
+        n = 1
+        while True:
+            n += 1
+            full_name = '%s (%d)' % (self.full_name, n)
+            if full_name in self.full_name_list:
+                if self.full_name_list[full_name] == self.id_:
+                    # We are already in the list.
+                    return full_name
+            else:
+                # Empty slot.
+                self.full_name_list[full_name] = self.id_
+                return full_name
 
     @staticmethod
     def from_entity(entity, self_user_id):

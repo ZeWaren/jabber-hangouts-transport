@@ -188,15 +188,15 @@ class HangupsThread(threading.Thread):
                             inviter = conv.get_user(event.user_id)
                             history.append({
                                 'type': 'invite',
-                                'inviter': inviter.full_name,
-                                'invited': user.full_name,
+                                'inviter': inviter.unique_full_name,
+                                'invited': user.unique_full_name,
                                 'timestamp': event.timestamp,
                             })
                     elif event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_LEAVE:
                         for user in event_users:
                             history.append({
                                 'type': 'departure',
-                                'departed': user.full_name,
+                                'departed': user.unique_full_name,
                                 'timestamp': event.timestamp,
                             })
 
@@ -271,7 +271,7 @@ class HangupsThread(threading.Thread):
                 'chat_id': user.id_.chat_id,
                 'gaia_id': user.id_.gaia_id,
                 'first_name': user.first_name,
-                'full_name': user.full_name,
+                'full_name': user.unique_full_name,
                 'is_self': user.is_self,
                 'emails': user.emails._values,
                 'phones': user.phones._values,
@@ -329,7 +329,7 @@ class HangupsThread(threading.Thread):
             user_list = {}
             self_gaia_id = None
             for user in conv.users:
-                user_list[user.id_.gaia_id] = user.full_name
+                user_list[user.id_.gaia_id] = user.unique_full_name
                 if user.is_self:
                     # XMPP needs to know which user is itself.
                     self_gaia_id = user.id_.gaia_id
@@ -373,12 +373,12 @@ class HangupsThread(threading.Thread):
                 if conv_event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_JOIN:
                     new_members = {}
                     for user in event_users:
-                        new_members[user.id_.gaia_id] = user.full_name
+                        new_members[user.id_.gaia_id] = user.unique_full_name
                     message['new_members'] = new_members
                 elif conv_event.type_ == hangups.MEMBERSHIP_CHANGE_TYPE_LEAVE:
                     old_members = {}
                     for user in event_users:
-                        old_members[user.id_.gaia_id] = user.full_name
+                        old_members[user.id_.gaia_id] = user.unique_full_name
                     message['old_members'] = old_members
 
                 self.send_message_to_xmpp(message)
