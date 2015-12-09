@@ -18,7 +18,9 @@ saslUsername = ""
 
 debugFile = ""
 
-dumpProtocol = True
+debugXMPP = True
+debugHangouts = False
+debugTransport = True
 
 refreshTokenDirectory = "/var/spool/jabberhangouts/refresh_tokens"
 spoolFile = "/var/spool/jabberhangouts/spoolfile"

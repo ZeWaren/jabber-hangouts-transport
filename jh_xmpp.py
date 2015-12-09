@@ -29,7 +29,7 @@ xmpp_queue = Queue()
 xmpp_lock = Lock()
 userfile = None
 
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Transport:
@@ -45,19 +45,16 @@ class Transport:
 
     def xmpp_connect(self):
         connected = self.jabber.connect((config.mainServer, config.port))
-        if config.dumpProtocol:
-            _log.info("connected: %r", connected)
+        logger.debug("Transport is connected: %r.", connected)
+
         while not connected:
             time.sleep(5)
             connected = self.jabber.connect((config.mainServer, config.port))
-            if config.dumpProtocol:
-                _log.info("connected: %r", connected)
+            logger.debug("Transport is connected: %r.", connected)
         self.register_handlers()
-        if config.dumpProtocol:
-            _log.info("trying auth")
+        logger.debug("Transport is going to auth with the server.")
         connected = self.jabber.auth(config.saslUsername, config.secret)
-        if config.dumpProtocol:
-            _log.info("auth return: %r", connected)
+        logger.debug("Auth returned: %r.", connected)
         return connected
 
     def register_handlers(self):
@@ -403,7 +400,6 @@ class Transport:
                 self.jabber.send(p)
                 self.jabber.send(m)
 
-
     def xmpp_presence_do_update(self, event, fromstripped):
         jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'set_presence',
                                                                'type': event.getType(),
@@ -476,8 +472,6 @@ class Transport:
                         self.jabber.send(m)
             else:
                 # A message was received from someone who was not registered
-                if config.dumpProtocol:
-                    print('no item error')
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_REGISTRATION_REQUIRED']))
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
@@ -723,7 +717,7 @@ class Transport:
 
     def handle_message(self, message):
         # Handle a message from the hangout thread.
-        print("Handling message from hangouts: ", message)
+        logger.debug("Handling message from hangouts: %r", message)
 
         fromjid = message['jid']
         if fromjid not in self.userlist:
@@ -998,7 +992,7 @@ class XMPPQueueThread(threading.Thread):
             finally:
                 xmpp_lock.release()
 
-        print("Queue thread stopped")
+        logger.info("Queue thread stopped.")
 
 
 def download_url(url):

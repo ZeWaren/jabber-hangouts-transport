@@ -3,12 +3,15 @@ sys.path.insert(0, './lib/hangups')
 sys.path.insert(0, './lib/xmpp')
 import os
 import logging
+import logging.handlers
 import time
 import signal
 import traceback
 import shelve
 import xmlconfig
 import xmpp
+from xmpp.debug import Debug as XMPPDebug
+import debug as debug_module
 
 import config
 import jh_hangups
@@ -16,7 +19,6 @@ from jh_hangups import HangupsManager
 import jh_xmpp
 from jh_xmpp import Transport, XMPPQueueThread, xmpp_lock
 
-_log = logging.getLogger(__name__)
 
 version = 'unknown'
 
@@ -36,8 +38,7 @@ def load_config():
 
 def sig_handler(signum, frame):
     transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)
-    if config.dumpProtocol:
-        print('Signal handler called with signal %s' % (signum,))
+    logger.info('Signal handler called with signal %s' % (signum,))
     transport.online = 0
 
 
@@ -59,14 +60,11 @@ def setup_debugging():
 if __name__ == '__main__':
     setup_debugging()
 
-    jh_hangups.hangups_manager = HangupsManager()
-    jh_xmpp.userfile = shelve.open(config.spoolFile)
-
     logfile = None
     if config.debugFile:
         logfile = open(config.debugFile, 'a')
 
-    if config.dumpProtocol:
+    if config.debugXMPP:
         debug = ['always', 'nodebuilder']
     else:
         debug = []
@@ -76,22 +74,33 @@ if __name__ == '__main__':
     else:
         config.saslUsername = config.jid
         sasl = 0
+
     connection = xmpp.client.Component(config.jid,
                                        config.port,
-                                       debug=debug,
+                                       debug=[],
                                        domains=[config.jid, config.confjid],
                                        sasl=sasl,
                                        bind=config.useComponentBinding,
                                        route=config.useRouteWrap)
 
+    debug_module.setup_logging(connection)
+    logger = logging.getLogger(__name__)
+    logger.info("Jabber Hangouts transport is starting.")
+
+    logging.debug("Starting Hangouts thread manager.")
+    jh_hangups.hangups_manager = HangupsManager()
+    jh_xmpp.userfile = shelve.open(config.spoolFile)
+
+    logging.debug("Starting transport.")
     transport = Transport(connection, jh_xmpp.userfile)
     if not transport.xmpp_connect():
-        print("Could not connect to server, or password mismatch!")
+        logging.error("Could not connect to server, or password mismatch!")
         sys.exit(1)
 
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
 
+    logging.debug("Starting transport queue thread.")
     XMPPQueueThread(transport).start()
 
     while transport.online:
@@ -115,13 +124,13 @@ if __name__ == '__main__':
         transport.xmpp_disconnect()
     jh_xmpp.userfile.close()
     connection.disconnect()
-    print("Main thread stopped")
+
+    logger.info('Main thread stopped.')
 
     if len(jh_hangups.hangups_manager.hangouts_threads) > 0:
-        print('Tranport terminated, but Hangouts threads are still active.')
+        logger.warning('Tranport terminated, but Hangouts threads are still active.')
         for jid in jh_hangups.hangups_manager.hangouts_threads:
             jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
 
     # Join the remaining threads and exit.
     sys.exit(0)
-

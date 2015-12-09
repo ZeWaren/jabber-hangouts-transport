@@ -78,7 +78,6 @@ class HangupsThread(threading.Thread):
 
         self.conv_list = None
         self.user_list = None
-        self.state = None
         self.show = None
         self.loop = None
         self.client = None
@@ -96,10 +95,9 @@ class HangupsThread(threading.Thread):
         self.client.on_disconnect.add_observer(self.on_disconnect)
         self.client.on_reconnect.add_observer(self.on_reconnect)
 
-        self.set_state('disconnected')
         self.loop.run_until_complete(self.client.connect())
         self.send_message_to_xmpp({'what': 'disconnected'})
-        print("Hangup thread stopped")
+        logger.info("Hangouts thread stopped.")
 
     def call_soon_thread_safe(self, message):
         """Allow self.on_message to be called inside the asyncio loop.
@@ -112,12 +110,7 @@ class HangupsThread(threading.Thread):
         message['jid'] = self.jid
         self.xmpp_queue.put(message)
 
-    def set_state(self, state):
-        print("Setting state: ", state)
-        self.state = state
-
     def set_presence(self, typ, show):
-        print("Setting presence: ", typ, show)
         self.type = typ
         self.show = show
 
@@ -235,13 +228,13 @@ class HangupsThread(threading.Thread):
     @asyncio.coroutine
     def on_message(self, message):
         """Receive a message from XMPP"""
+        logger.debug("Received a message from XMPP: %r.", message)
         try:
             if message['what'] == 'disconnect':
-                self.set_state('disconnected')
                 yield from self.client.disconnect()
                 self.loop.stop()
             elif message['what'] == 'connect':
-                self.set_state('connected')
+                pass
             elif message['what'] == 'set_presence':
                 self.set_presence(message['type'], message['show'])
             elif message['what'] == 'chat_message':
