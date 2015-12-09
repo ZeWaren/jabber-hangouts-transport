@@ -89,6 +89,7 @@ class HangupsThread(threading.Thread):
         self.client = hangups.Client(self.cookies)
         self.client.on_connect.add_observer(self.on_connect)
         self.client.on_disconnect.add_observer(self.on_disconnect)
+        self.client.on_reconnect.add_observer(self.on_reconnect)
 
         self.set_state('disconnected')
         self.loop.run_until_complete(self.client.connect())
@@ -308,6 +309,18 @@ class HangupsThread(threading.Thread):
     def on_disconnect(self):
         """Hangouts is disconnected"""
         self.send_message_to_xmpp({'what': 'disconnected'})
+
+    @asyncio.coroutine
+    def on_reconnect(self):
+        """Hangouts reconnected"""
+        self.send_message_to_xmpp({'what': 'connected'})
+
+        # Send presence information for contacts.
+        for user in self.user_list.get_all():
+            self.send_message_to_xmpp({'what': 'presence',
+                                       'gaia_id': user.id_.gaia_id,
+                                       'status': presence_to_status(user.presence),
+                                       'status_message': user.get_mood_message()})
 
     @asyncio.coroutine
     def on_presence(self, user, presence):
