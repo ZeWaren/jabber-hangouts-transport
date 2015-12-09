@@ -653,6 +653,13 @@ class Transport:
                     del self.userfile[fromstripped]
                     self.userfile.sync()
 
+                # Delete the refresh token file.
+                refresh_token_filename = self.get_refresh_token_filename(fromstripped)
+                try:
+                    os.remove(refresh_token_filename)
+                except OSError:
+                    pass
+
                 # Acknowledge event.
                 m = event.buildReply('result')
                 self.jabber.send(m)
