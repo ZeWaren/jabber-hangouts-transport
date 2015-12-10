@@ -24,16 +24,28 @@ version = 'unknown'
 
 
 def load_config():
+    """Look for files to load the configuration from."""
     config_options = {}
     for configFile in config.configFiles:
         if os.path.isfile(configFile):
             xmlconfig.reloadConfig(configFile, config_options)
             config.configFile = configFile
-            return
-    sys.stderr.write(("Configuration file not found. "
-                      "You need to create a config file and put it "
-                      " in one of these locations:\n ") + "\n ".join(config.configFiles))
-    sys.exit(1)
+            return True
+    return False
+
+
+def write_pid_file(filename):
+    pid = str(os.getpid())
+    f = open(filename, 'w')
+    f.write(pid)
+    f.close()
+
+
+def delete_pid_file(filename):
+    try:
+        os.remove(filename)
+    except OSError:
+        pass
 
 
 def sig_handler(signum, frame):
@@ -42,26 +54,24 @@ def sig_handler(signum, frame):
     transport.online = 0
 
 
-def log_error():
-    err = '%s - %s\n' % (time.strftime('%a %d %b %Y %H:%M:%S'), version)
-    if logfile is not None:
-        logfile.write(err)
-        traceback.print_exc(file=logfile)
-        logfile.flush()
-    sys.stderr.write(err)
-    traceback.print_exc()
+def setup_debugging():
+    sys.path.append('/root/pycharm-debug-py3k.egg')
+    import pydevd
+    pydevd.settrace('192.168.4.47', port=5422, stdoutToServer=True, stderrToServer=True, suspend=False)
 
 
 if __name__ == '__main__':
+    setup_debugging()
 
-    logfile = None
-    if config.debugFile:
-        logfile = open(config.debugFile, 'a')
+    if not load_config():
+        # Could not find/load a config file: exit.
+        sys.stderr.write(("Configuration file not found. "
+                          "You need to create a config file and put it "
+                          " in one of these locations:\n ") + "\n ".join(config.configFiles))
+        sys.exit(1)
 
-    if config.debugXMPP:
-        debug = ['always', 'nodebuilder']
-    else:
-        debug = []
+    if config.pidFile:
+        write_pid_file(config.pidFile)
 
     if config.saslUsername:
         sasl = 1
@@ -110,7 +120,7 @@ if __name__ == '__main__':
         except IOError:
             transport.xmpp_disconnect()
         except:
-            log_error()
+            logging.exception('')
         if not connection.isConnected():
             transport.xmpp_disconnect()
 
@@ -125,6 +135,9 @@ if __name__ == '__main__':
         logger.warning('Tranport terminated, but Hangouts threads are still active.')
         for jid in jh_hangups.hangups_manager.hangouts_threads:
             jh_hangups.hangups_manager.send_message(jid, {'what': 'disconnect'})
+
+    if config.pidFile:
+        delete_pid_file(config.pidFile)
 
     # Join the remaining threads and exit.
     sys.exit(0)

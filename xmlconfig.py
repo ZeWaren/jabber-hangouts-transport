@@ -73,7 +73,7 @@ def importOptions(options):
 
 
 def reloadConfig(cfgfile=None, options=None):
-    if file:
+    if cfgfile:
         importFile(cfgfile)
     if options:
         importOptions(options)

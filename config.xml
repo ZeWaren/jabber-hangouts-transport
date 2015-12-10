@@ -4,25 +4,21 @@
     <!-- Please read through all the options in this file -->
 
     <!-- The JabberID of the transport -->
-    <jid>hangout.bsdhangups</jid>
+    <jid>hangups.example.net</jid>
 
     <!-- The conference JabberID of the transport -->
-    <confjid>conf.hangout.bsdhangups</confjid>
+    <confjid>conf.hangups.example.net</confjid>
 
     <!-- The name of the transport in the service discovery list. -->
-    <discoName>Google Hangout Transport</discoName>
-
-    <!-- The location of the PID file, relative to the PyIRCt directory -->
-    <!-- Comment out if you do not want a PID file -->
-    <!--<pid>PyMailt.pid</pid>-->
+    <discoName>Google Hangouts Transport</discoName>
 
     <!-- The IP address or DNS name of the main Jabber server -->
     <mainServer>127.0.0.1</mainServer>
 
     <!-- The JID of the main Jabber server -->
-    <mainServerJID>jabber.bsdhangups</mainServerJID>
+    <mainServerJID>example.net</mainServerJID>
 
-    <!-- The TCP port to connect to the Jabber server on (this is the default for Jabberd2) -->
+    <!-- The TCP port to connect to the Jabber server on -->
     <port>5347</port>
 
     <!-- The authentication token to use when connecting to the Jabber server -->
@@ -42,9 +38,26 @@
     <!-- Jabberd2 requires this for useComponentBinding. -->
     <useRouteWrap/>
 
-    <!-- The file to log to. Leave this disabled for stdout only -->
-    <!--<debugFile>mailerror.log</debugFile> -->
+    <!-- The location of the PID file -->
+    <!-- Comment out if you do not want a PID file -->
+    <pidFile>/var/run/jabberhangouts.pid</pidFile>
 
-    <!-- Show the raw data being sent and received from the xmpp and mail servers -->
-    <!--<dumpProtocol/>-->
+    <!-- The file to log to. Comment to only output to stdout -->
+    <logFile>/var/log/jabberhangouts.log</logFile>
+
+    <!-- Where to store the Hangouts OAuth refresh tokens -->
+    <refreshTokenDirectory>/var/spool/jabberhangouts/refresh_tokens</refreshTokenDirectory>
+
+    <!-- Where to store the registered users' information -->
+    <spoolFile>/var/spool/jabberhangouts/spoolfile</spoolFile>
+
+        <!-- Uncomment to dump XMPP protocol in the log file -->
+    <debugXMPP/>
+
+    <!-- Uncomment to dump Hangouts protocol in the log file -->
+    <debugHangouts/>
+
+    <!-- Uncomment to dump the transport protocol in the log file -->
+    <debugTransport/>
+
 </jabberhangouts>
