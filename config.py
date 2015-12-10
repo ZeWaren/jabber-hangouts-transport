@@ -17,9 +17,9 @@ useRouteWrap = False
 saslUsername = ""
 
 logFile = ""
-debugXMPP = True
+debugXMPP = False
 debugHangouts = False
-debugTransport = True
+debugTransport = False
 
 refreshTokenDirectory = "/var/spool/jabberhangouts/refresh_tokens"
 spoolFile = "/var/spool/jabberhangouts/spoolfile"

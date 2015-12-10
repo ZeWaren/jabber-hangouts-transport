@@ -51,13 +51,13 @@
     <!-- Where to store the registered users' information -->
     <spoolFile>/var/spool/jabberhangouts/spoolfile</spoolFile>
 
-        <!-- Uncomment to dump XMPP protocol in the log file -->
-    <debugXMPP/>
+    <!-- Uncomment to dump XMPP protocol in the log file -->
+    <!-- <debugXMPP/> -->
 
     <!-- Uncomment to dump Hangouts protocol in the log file -->
-    <debugHangouts/>
+    <!-- <debugHangouts/> -->
 
     <!-- Uncomment to dump the transport protocol in the log file -->
-    <debugTransport/>
+    <!-- <debugTransport/> -->
 
 </jabberhangouts>
