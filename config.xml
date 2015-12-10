@@ -36,7 +36,7 @@
 
     <!-- Wrap stanzas in <route> stanza. -->
     <!-- Jabberd2 requires this for useComponentBinding. -->
-    <useRouteWrap/>
+    <!-- <useRouteWrap/> -->
 
     <!-- The location of the PID file -->
     <!-- Comment out if you do not want a PID file -->
