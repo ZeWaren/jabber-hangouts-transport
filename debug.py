@@ -45,13 +45,18 @@ class Formatter(logging.Formatter):
 def setup_logging(connection):
     # Prepare the handlers and formatters.
     formatter = Formatter()
-    formatter.enable_colors = True
     formatter.module_colors = {
         '__main__': chr(27) + "[35;1m" # purple
     }
-    default_handler = logging.StreamHandler()
+    if config.logFile:
+        default_handler = logging.FileHandler(config.logFile)
+        xmpp_handler = logging.FileHandler(config.logFile)
+        xmpp_debug.colors_enabled = False
+    else:
+        default_handler = logging.StreamHandler()
+        xmpp_handler = logging.StreamHandler()
+        formatter.enable_colors = True
     default_handler.setFormatter(formatter)
-    xmpp_handler = logging.StreamHandler()
     xmpp_formatter = logging.Formatter(fmt="%(message)s")
     xmpp_handler.setFormatter(xmpp_formatter)
 
