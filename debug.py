@@ -32,6 +32,6 @@ def setup_logging(connection):
         connection._DEBUG.active_set(['dispatcher', 'socket', 'component'])
 
     # Set colors.
-    connection._DEBUG.colors['__main__']=xmpp_debug.color_purple
-    connection._DEBUG.colors['jh_hangouts']=xmpp_debug.color_green
-    connection._DEBUG.colors['jh_xmpp']=xmpp_debug.color_green
+    connection._DEBUG.colors['__main__'] = xmpp_debug.color_purple
+    connection._DEBUG.colors['jh_hangouts'] = xmpp_debug.color_green
+    connection._DEBUG.colors['jh_xmpp'] = xmpp_debug.color_green

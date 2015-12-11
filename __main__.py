@@ -4,13 +4,10 @@ sys.path.insert(0, './lib/xmpp')
 import os
 import logging
 import logging.handlers
-import time
 import signal
-import traceback
 import shelve
 import xmlconfig
 import xmpp
-from xmpp.debug import Debug as XMPPDebug
 import debug as debug_module
 
 import config
@@ -18,9 +15,6 @@ import jh_hangups
 from jh_hangups import HangupsManager
 import jh_xmpp
 from jh_xmpp import Transport, XMPPQueueThread, xmpp_lock
-
-
-version = 'unknown'
 
 
 def load_config():
