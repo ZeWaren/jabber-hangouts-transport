@@ -21,10 +21,11 @@ def get_oauth_url():
 def presence_to_status(presence):
     """Convert a pb2 presence object to a presence description string."""
     status = 'offline'
-    if presence.reachable:
-        status = 'away'
-        if presence.available:
-            status = 'online'
+    if presence is not None:
+        if presence.reachable:
+            status = 'away'
+            if presence.available:
+                status = 'online'
     return status
 
 
@@ -263,11 +264,15 @@ class HangupsThread(threading.Thread):
         self.conv_list.on_typing.add_observer(self.on_typing)
 
         # Query presence information for user list
+        participant_ids = []
+        for user_id in self.user_list._user_dict.keys():
+            if user_id.gaia_id == '' or self.user_list._user_dict[user_id].participant_type != 'gaia':
+                continue
+            participant_ids.append(hangouts_pb2.ParticipantId(gaia_id=user_id.gaia_id, chat_id=user_id.chat_id))
+
         presence_request = hangouts_pb2.QueryPresenceRequest(
             request_header=self.client.get_request_header(),
-            participant_id=[
-                hangouts_pb2.ParticipantId(gaia_id=user_id.gaia_id,
-                                           chat_id=user_id.chat_id) for user_id in self.user_list._user_dict.keys()],
+            participant_id=participant_ids,
             field_mask=[
                 hangouts_pb2.FIELD_MASK_REACHABLE,
                 hangouts_pb2.FIELD_MASK_AVAILABLE,
@@ -285,8 +290,8 @@ class HangupsThread(threading.Thread):
                 'first_name': user.first_name,
                 'full_name': user.unique_full_name,
                 'is_self': user.is_self,
-                'emails': user.emails._values,
-                'phones': user.phones._values,
+                'emails': user.emails._values if user.emails is not None else [],
+                'phones': user.phones._values if user.phones is not None else [],
                 'photo_url': user.photo_url,
                 'status': presence_to_status(user.presence),
                 'status_message': user.get_mood_message(),

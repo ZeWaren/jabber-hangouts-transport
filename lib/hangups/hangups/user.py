@@ -4,6 +4,7 @@ from collections import namedtuple
 import logging
 import asyncio
 from . import event
+from . import hangouts_pb2
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class User(object):
     full_name_list = {}
 
     def __init__(self, user_id, full_name, first_name, photo_url, emails, phones,
-                 is_self, presence):
+                 is_self, presence, participant_type):
         """Initialize a User."""
         self.id_ = user_id
         self.full_name = full_name if full_name != '' else DEFAULT_NAME
@@ -39,6 +40,7 @@ class User(object):
         self.phones = phones
         self.is_self = is_self
         self.presence = presence
+        self.participant_type = 'gaia' if participant_type == hangouts_pb2.PARTICIPANT_TYPE_GAIA else 'unknown'
 
     def create_unique_full_name(self):
         """Create a full name that is unique across every user met so far."""
@@ -90,7 +92,7 @@ class User(object):
                     entity.properties.email,
                     entity.properties.phone,
                     (self_user_id == user_id) or (self_user_id is None),
-                    presence)
+                    presence, hangouts_pb2.PARTICIPANT_TYPE_GAIA)
 
     @staticmethod
     def from_conv_part_data(conv_part_data, self_user_id):
@@ -100,8 +102,8 @@ class User(object):
         """
         user_id = UserID(chat_id=conv_part_data.id.chat_id,
                          gaia_id=conv_part_data.id.gaia_id)
-        return User(user_id, conv_part_data.fallback_name, None, None, [], [],
-                    (self_user_id == user_id) or (self_user_id is None), None)
+        return User(user_id, conv_part_data.fallback_name, None, None, None, None,
+                    (self_user_id == user_id) or (self_user_id is None), None, conv_part_data.participant_type)
 
     def set_presence(self, pb2_presence):
         self.presence = Presence(reachable=pb2_presence.reachable,
@@ -159,7 +161,8 @@ class UserList(object):
         except KeyError:
             logger.warning('UserList returning unknown User for UserID {}'
                            .format(user_id))
-            return User(user_id, DEFAULT_NAME + ' (' + user_id.gaia_id + ')', None, None, [], [], False, None)
+            return User(user_id, DEFAULT_NAME + ' (' + user_id.gaia_id + ')', None,
+                        None, None, None, False, None, hangouts_pb2.PARTICIPANT_TYPE_UNKNOWN)
 
     def get_all(self):
         """Returns all the users known"""
