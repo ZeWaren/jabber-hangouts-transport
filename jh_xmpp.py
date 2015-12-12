@@ -197,7 +197,12 @@ class Transport:
                 # Main JID of the transport
                 if event.getType() == 'subscribed':
                     if fromstripped in self.userlist:
-                        if event.getTo() == config.jid:
+                        if event.getTo() == config.jid and not self.userfile[fromstripped]['subscribed']:
+                            conf = self.userfile[fromstripped]
+                            conf['subscribed'] = True
+                            self.userfile[fromstripped] = conf
+                            self.userfile.sync()
+
                             # User has subscribed to the transport: send the list of contacts:
                             for user in self.userlist[fromstripped]['user_list']:
                                 self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
@@ -599,7 +604,7 @@ class Transport:
                 if fromstripped in self.userfile:
                     conf = self.userfile[fromstripped]
                 else:
-                    conf = {}
+                    conf = {'subscribed': False}
 
                 # Update account file.
                 conf['oauth_code'] = oauth_code  # I don't even know why we store this, since it cannot be used twice.
