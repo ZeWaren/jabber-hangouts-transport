@@ -311,9 +311,13 @@ class HangupsThread(threading.Thread):
                     if user.is_self:
                         # XMPP needs to know which user is itself.
                         self_gaia_id = user.id_.gaia_id
+                # If the conversation does not have a name, create one by joining the list of participants.
+                conv_name = conv.name
+                if conv_name is None:
+                    conv_name = ', '.join(user_list.values())
                 conv_list_dict[conv.id_sha1] = {
                     'conv_id': conv.id_sha1,
-                    'topic': conv.name,
+                    'topic': conv_name,
                     'user_list': user_list,
                     'self_id': self_gaia_id,
                 }
@@ -363,9 +367,13 @@ class HangupsThread(threading.Thread):
                     # XMPP needs to know which user is itself.
                     self_gaia_id = user.id_.gaia_id
 
+            # If the conversation does not have a name, create one by joining the list of participants.
+            conv_name = conv.name
+            if conv_name is None:
+                conv_name = ', '.join(user_list.values())
             conv_dict = {
                 'conv_id': conv.id_sha1,
-                'topic': conv.name,
+                'topic': conv_name,
                 'user_list': user_list,
                 'self_id': self_gaia_id,
             }
