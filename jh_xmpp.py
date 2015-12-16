@@ -891,13 +891,14 @@ class Transport:
             # Group chat was renamed
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                 conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
-                conv['topic'] = message['new_name']
-                for ajid in conv['connected_jids']:
-                    m = Message(typ='groupchat',
-                                frm='%s@%s' % (message['conv_id'], config.confjid),
-                                to=ajid,
-                                subject=message['new_name'])
-                    self.jabber.send(m)
+                if conv['topic'] != message['new_name']:
+                    conv['topic'] = message['new_name']
+                    for ajid in conv['connected_jids']:
+                        m = Message(typ='groupchat',
+                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    to=ajid,
+                                    subject=message['new_name'])
+                        self.jabber.send(m)
 
         elif message['what'] == 'conversation_add':
             # Group chat was created/found: add it to the list
