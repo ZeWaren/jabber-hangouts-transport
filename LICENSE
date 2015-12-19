@@ -1,0 +1,13 @@
+Files implementing the transport are licensed under the MIT license (file LICENSE-MIT).
+Unfortunately, the transport uses library xmppy, which is license under the GPL v2.
+The GPL license being poisonous (GPL+MIT = GPL), the project as a whole has no choice but to be licensed under the GPL (file LICENSE-GPL).
+
+Here are the different parts and dependencies of the project, and their respective licenses:
+- The transport: MIT.
+- hangups: MIT.
+  - aiohttp: Apache 2.
+  - purplex: MIT.
+  - protobuf: New BSD License.
+  - reparser: MIT.
+  - requests: Apache 2.0.
+- xmppy: GPL v2.

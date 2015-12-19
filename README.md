@@ -90,5 +90,5 @@ Please look at the comments in the provided example config file for information 
 * 1.0.0a: first Alpha.
 
 ## Licence
-Because this program uses `xmpppy` and because the GPL licence is poisonous, it is released under the terms of the GPL.
+See file [LICENSE](LICENSE).
 
