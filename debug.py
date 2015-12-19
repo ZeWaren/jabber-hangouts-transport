@@ -12,7 +12,7 @@ def xmpp_debug_show(self, msg, flag=None, prefix=None, sufix=None, lf=0):
     if sufix:
         msg = msg + sufix
     logger = logging.getLogger('xmpp')
-    logger.debug(msg)
+    logger.debug(str(msg).encode('utf-8'))
 
 
 class Formatter(logging.Formatter):
@@ -21,7 +21,7 @@ class Formatter(logging.Formatter):
     """Format log entries as would the XMPP library"""
     def __init__(self, fmt=None, datefmt=None, style='%'):
         self.enable_colors = False
-        super().__init__(fmt="%(name)s %(levelname)s %(message)s", datefmt=datefmt, style=style)
+        super().__init__(fmt=u"%(name)s %(levelname)s %(message)s", datefmt=datefmt, style=style)
 
     def format(self, record):
         if self.enable_colors and record.name in self.module_colors:
@@ -49,15 +49,15 @@ def setup_logging(connection):
         '__main__': chr(27) + "[35;1m" # purple
     }
     if config.logFile:
-        default_handler = logging.FileHandler(config.logFile)
-        xmpp_handler = logging.FileHandler(config.logFile)
+        default_handler = logging.FileHandler(config.logFile, encoding='utf-8')
+        xmpp_handler = logging.FileHandler(config.logFile, encoding='utf-8')
         xmpp_debug.colors_enabled = False
     else:
         default_handler = logging.StreamHandler()
         xmpp_handler = logging.StreamHandler()
         formatter.enable_colors = True
     default_handler.setFormatter(formatter)
-    xmpp_formatter = logging.Formatter(fmt="%(message)s")
+    xmpp_formatter = logging.Formatter(fmt=u"%(message)s")
     xmpp_handler.setFormatter(xmpp_formatter)
 
     # Configure the root handler.
