@@ -47,11 +47,7 @@ Install Python 3.4 and bootstrap pip.
     
 Install the required Python packages:
 
-    # pip3.4 install aiohttp
-    # pip3.4 install purplex
-    # pip3.4 install protobuf==3.0.0a3
-    # pip3.4 install reparser
-    # pip3.4 install requests
+    # pip3.4 install -r requirements.txt
 
 ### Debian 8 (Jessie)
 Install Python 3.4, virtualenv, and git:
