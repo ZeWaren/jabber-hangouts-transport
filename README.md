@@ -53,6 +53,24 @@ Install the required Python packages:
     # pip3.4 install reparser
     # pip3.4 install requests
 
+### Debian 8 (Jessie)
+Install Python 3.4, virtualenv, and git:
+
+    # apt-get install virtualenv git
+    
+Clone jabber-hangouts-transport:
+
+    $ git clone https://github.com/ZeWaren/jabber-hangouts-transport.git
+
+Create a new virtual environment:
+
+    $ cd jabber-hangouts-transport
+    $ virtualenv -p python3 env
+
+Install the required Python packages:
+
+    $ env/bin/pip install -r requirements.txt
+
 ### Other systems
 The transport should run fine on any system running python and its packages. If you tested one successfully, please
 create a merge request with the updated version of this file.
