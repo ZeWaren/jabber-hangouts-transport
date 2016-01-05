@@ -38,6 +38,7 @@ import random
 import gzip
 from io import StringIO
 from urllib.request import urlparse
+import ssl
 
 # determine which DNS resolution library is available
 HAVE_DNSPYTHON = False
@@ -166,36 +167,30 @@ class TCPsocket(PlugIn):
         """ Reads all pending incoming data.
             In case of disconnection calls owner's disconnected() method and then raises IOError exception."""
         try: received = self._recv(BUFLEN)
-        except socket.sslerror as e:
+        except ssl.SSLError as e:
             self._seen_data=0
-            if e[0]==socket.SSL_ERROR_WANT_READ:
-                sys.exc_clear()
+            if e.args[0] == ssl.SSL_ERROR_WANT_READ:
                 self.DEBUG("SSL_WANT_READ while receiving data, asking for a retry",'warn')
                 return ''
-            if e[0]==socket.SSL_ERROR_WANT_WRITE:
-                sys.exc_clear()
+            elif e.args[0] == ssl.SSL_ERROR_WANT_WRITE:
                 self.DEBUG("SSL_WANT_WRITE while receiving data, asking for a retry",'warn')
                 return ''
             self.DEBUG('Socket error while receiving data','error')
-            sys.exc_clear()
             self._owner.disconnected()
             raise IOError("Disconnected from server")
         except: received = ''
 
         while self.pending_data(0):
             try: add = self._recv(BUFLEN)
-            except socket.sslerror as e:
+            except ssl.SSLError as e:
                 self._seen_data=0
-                if e[0]==socket.SSL_ERROR_WANT_READ:
-                    sys.exc_clear()
+                if e.args[0] == ssl.SSL_ERROR_WANT_READ:
                     self.DEBUG("SSL_WANT_READ while receiving data, ignoring",'warn')
                     break
-                if e[0]==socket.SSL_ERROR_WANT_WRITE:
-                    sys.exc_clear()
+                elif e.args[0] == ssl.SSL_ERROR_WANT_WRITE:
                     self.DEBUG("SSL_WANT_WRITE while receiving data, ignoring",'warn')
                     break
                 self.DEBUG('Socket error while receiving data','error')
-                sys.exc_clear()
                 self._owner.disconnected()
                 raise IOError("Disconnected from server")
             except: add=''
@@ -224,14 +219,12 @@ class TCPsocket(PlugIn):
                 try:
                     self._send(raw_data)
                     sent = 1
-                except socket.sslerror as e:
-                    if e[0]==socket.SSL_ERROR_WANT_READ:
-                        sys.exc_clear()
+                except ssl.SSLError as e:
+                    if e.args[0] == ssl.SSL_ERROR_WANT_READ:
                         self.DEBUG("SSL_WANT_READ while sending data, wating to retry",'warn')
                         select.select([self._sock],[],[],retry_timeout)
                         continue
-                    if e[0]==socket.SSL_ERROR_WANT_WRITE:
-                        sys.exc_clear()
+                    elif e.args[0] == ssl.SSL_ERROR_WANT_WRITE:
                         self.DEBUG("SSL_WANT_WRITE while sending data, waiting to retry",'warn')
                         select.select([],[self._sock],[],retry_timeout)
                         continue
