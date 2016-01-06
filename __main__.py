@@ -6,8 +6,10 @@ import logging
 import logging.handlers
 import signal
 import shelve
+import tempfile
 import xmlconfig
 import xmpp
+import time
 import debug as debug_module
 
 import config
@@ -42,6 +44,34 @@ def delete_pid_file(filename):
         pass
 
 
+def check_spool_directories(spool_file, refresh_token_directory):
+    """Check that the spool file and the refresh token directory are writable"""
+
+    # Try to modify the spool file.
+    try:
+        userfile = shelve.open(spool_file)
+        userfile['test'] = time.time()
+        userfile.sync()
+        userfile.close()
+    except OSError:
+        logger = logging.getLogger(__name__)
+        logger.error("Spool file does not seem to be writable. Check that the permissions of the file or its "
+                     "directory are correct.")
+        return False
+
+    # Try to create a file in the refresh token directory.
+    try:
+        testfile = tempfile.TemporaryFile(dir=refresh_token_directory)
+        testfile.close()
+    except OSError as e:
+        logger = logging.getLogger(__name__)
+        logger.error("Refresh token directory does not seem to be writable. Check that it exits and that its "
+                     "permissions are correct. Errno = %d." % e.errno)
+        return False
+
+    return True
+
+
 def sig_handler(signum, frame):
     transport.offlinemsg = 'Signal handler called with signal %s' % (signum,)
     logger.info('Signal handler called with signal %s' % (signum,))
@@ -57,6 +87,8 @@ if __name__ == '__main__':
                           " in one of these locations:\n ") + "\n ".join(config.configFiles))
         sys.exit(1)
 
+    debug_module.setup_logging()
+
     if config.pidFile:
         write_pid_file(config.pidFile)
 
@@ -66,6 +98,10 @@ if __name__ == '__main__':
         config.saslUsername = config.jid
         sasl = 0
 
+    # If the required files/directories are not writable, die.
+    if not check_spool_directories(config.spoolFile, config.refreshTokenDirectory):
+        sys.exit(1)
+
     connection = xmpp.client.Component(config.jid,
                                        config.port,
                                        debug=[],
@@ -74,7 +110,7 @@ if __name__ == '__main__':
                                        bind=config.useComponentBinding,
                                        route=config.useRouteWrap)
 
-    debug_module.setup_logging(connection)
+    debug_module.setup_logging_connection(connection)
     logger = logging.getLogger(__name__)
     logger.info("Jabber Hangouts transport is starting.")
 

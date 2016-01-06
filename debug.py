@@ -12,7 +12,7 @@ def xmpp_debug_show(self, msg, flag=None, prefix=None, sufix=None, lf=0):
     if sufix:
         msg = msg + sufix
     logger = logging.getLogger('xmpp')
-    logger.debug(str(msg).encode('utf-8'))
+    logger.debug(str(msg))
 
 
 class Formatter(logging.Formatter):
@@ -42,11 +42,11 @@ class Formatter(logging.Formatter):
         return color + super().format(record) + color_none
 
 
-def setup_logging(connection):
+def setup_logging():
     # Prepare the handlers and formatters.
     formatter = Formatter()
     formatter.module_colors = {
-        '__main__': chr(27) + "[35;1m" # purple
+        '__main__': chr(27) + "[35;1m"  # purple
     }
     if config.logFile:
         default_handler = logging.FileHandler(config.logFile, encoding='utf-8')
@@ -86,6 +86,8 @@ def setup_logging(connection):
     l.setLevel(logging.DEBUG if config.debugTransport else logging.INFO)
     l.addHandler(default_handler)
 
+
+def setup_logging_connection(connection):
     # Replace the show() method of the XMPP library, to pipe the log messages into logging instead of their mechanism.
     connection._DEBUG.show = types.MethodType(xmpp_debug_show, connection._DEBUG)
     connection._DEBUG.prefix = ''
