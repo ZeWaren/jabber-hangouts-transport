@@ -48,14 +48,7 @@ def sig_handler(signum, frame):
     transport.online = 0
 
 
-def setup_debugging():
-    sys.path.append('/root/pycharm-debug-py3k.egg')
-    import pydevd
-    pydevd.settrace('192.168.4.47', port=5422, stdoutToServer=True, stderrToServer=True, suspend=False)
-
-
 if __name__ == '__main__':
-    setup_debugging()
 
     if not load_config():
         # Could not find/load a config file: exit.
