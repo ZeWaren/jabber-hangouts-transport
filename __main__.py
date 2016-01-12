@@ -49,10 +49,9 @@ def check_spool_directories(spool_file, refresh_token_directory):
 
     # Try to modify the spool file.
     try:
-        userfile = shelve.open(spool_file)
-        userfile['test'] = time.time()
-        userfile.sync()
-        userfile.close()
+        with shelve.open(spool_file) as userfile:
+            userfile['test'] = time.time()
+            userfile.sync()
     except OSError:
         logger = logging.getLogger(__name__)
         logger.error("Spool file does not seem to be writable. Check that the permissions of the file or its "
@@ -66,7 +65,7 @@ def check_spool_directories(spool_file, refresh_token_directory):
     except OSError as e:
         logger = logging.getLogger(__name__)
         logger.error("Refresh token directory does not seem to be writable. Check that it exits and that its "
-                     "permissions are correct. Errno = %d." % e.errno)
+                     "permissions are correct. Err = %s." % str(e))
         return False
 
     return True
