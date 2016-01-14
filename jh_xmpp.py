@@ -271,45 +271,46 @@ class Transport:
                     conv = self.userlist[fromstripped]['conv_list'][conv_id]
 
                     if event.getType() == 'available' or event.getType() is None or event.getType() == '':
-                        # Client joined the conversation:
-                        # add it to the list of connected resources and send the user list,
-                        # and delete it from the list of invitation.
-                        conv['connected_jids'][fromjid] = True
-                        if fromjid in conv['invited_jids']:
-                            del conv['invited_jids'][fromjid]
+                        if fromjid not in conv['connected_jids']:
+                            # Client joined the conversation:
+                            # add it to the list of connected resources and send the user list,
+                            # and delete it from the list of invitation.
+                            conv['connected_jids'][fromjid] = True
+                            if fromjid in conv['invited_jids']:
+                                del conv['invited_jids'][fromjid]
 
-                        # Request conversation history from Hangouts.
-                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_history_request',
-                                                                               'conv_id': conv_id,
-                                                                               'sender_jid': fromjid})
+                            # Request conversation history from Hangouts.
+                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_history_request',
+                                                                                   'conv_id': conv_id,
+                                                                                   'sender_jid': fromjid})
 
-                        # According to the protocol, the self-user should the last to be sent.
-                        self_user = None
-                        for user in conv['user_list']:
-                            if user == conv['self_id']:
-                                self_user = user
-                            else:
-                                # User is not self, send presence
-                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][user]),
+                            # According to the protocol, the self-user should the last to be sent.
+                            self_user = None
+                            for user in conv['user_list']:
+                                if user == conv['self_id']:
+                                    self_user = user
+                                else:
+                                    # User is not self, send presence
+                                    p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][user]),
+                                                 to=event.getFrom(),
+                                                 payload=[MucUser(role='participant',
+                                                                  affiliation='member',
+                                                                  jid='%s@%s' % (user, config.jid))])
+                                    self.jabber.send(p)
+
+                            if self_user is not None:
+                                # Send self user presence
+                                muc_user = MucUser(role='participant',
+                                                   affiliation='member',
+                                                   jid='%s@%s' % (self_user, config.jid))
+                                # Code 110 means that this presence is the last of the list
+                                # Code 210 means that we renamed the self user.
+                                muc_user.addChild('status', {'code': 110})
+                                muc_user.addChild('status', {'code': 210})
+                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
                                              to=event.getFrom(),
-                                             payload=[MucUser(role='participant',
-                                                              affiliation='member',
-                                                              jid='%s@%s' % (user, config.jid))])
+                                             payload=[muc_user])
                                 self.jabber.send(p)
-
-                        if self_user is not None:
-                            # Send self user presence
-                            muc_user = MucUser(role='participant',
-                                               affiliation='member',
-                                               jid='%s@%s' % (self_user, config.jid))
-                            # Code 110 means that this presence is the last of the list
-                            # Code 210 means that we renamed the self user.
-                            muc_user.addChild('status', {'code': 110})
-                            muc_user.addChild('status', {'code': 210})
-                            p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
-                                         to=event.getFrom(),
-                                         payload=[muc_user])
-                            self.jabber.send(p)
 
                     elif event.getType() == 'unavailable':
                         # Resource left the conversation:
