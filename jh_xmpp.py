@@ -199,9 +199,11 @@ class Transport:
                                 del conv['invited_jids'][fromjid]
 
                             # Request conversation history from Hangouts.
-                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_history_request',
-                                                                                   'conv_id': conv_id,
-                                                                                   'sender_jid': fromjid})
+                            real_conv_id = self.conv_alias_to_gaia_id(conv_id, fromstripped)
+                            jh_hangups.hangups_manager.send_message(fromstripped,
+                                                                    {'what': 'conversation_history_request',
+                                                                     'conv_id': real_conv_id,
+                                                                     'sender_jid': fromjid})
 
                             # According to the protocol, the self-user should the last to be sent.
                             self_user = None
@@ -403,15 +405,17 @@ class Transport:
 
                         if event.getBody() is None and event.getSubject():
                             # Subject change request
+                            real_gaia_id = self.conv_alias_to_gaia_id(gaia_id, fromstripped)
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_rename',
-                                                                                   'conv_id': gaia_id,
+                                                                                   'conv_id': real_gaia_id,
                                                                                    'new_name': event.getSubject()})
                         if (event.getBody() is not None and event.getBody() != '')\
                                 and (event.getTo().getResource() is None or event.getTo().getResource() == ''):
                             # Regular message
+                            real_gaia_id = self.conv_alias_to_gaia_id(gaia_id, fromstripped)
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                                    'type': 'group',
-                                                                                   'conv_id': gaia_id,
+                                                                                   'conv_id': real_gaia_id,
                                                                                    'sender_jid': from_jid,
                                                                                    'message': event.getBody()})
                     elif gaia_id in self.userlist[fromstripped]['user_list']:
@@ -580,7 +584,7 @@ class Transport:
                 if fromstripped in self.userfile:
                     conf = self.userfile[fromstripped]
                 else:
-                    conf = {'subscribed': False}
+                    conf = {'subscribed': False, 'conv_aliases': {}}
 
                 # Update account file.
                 conf['oauth_code'] = oauth_code  # I don't even know why we store this, since it cannot be used twice.
@@ -685,6 +689,34 @@ class Transport:
                                           to=jid,
                                           typ="unavailable"))
 
+    def create_conv_alias_dict_if_not_exist(self, fromstripped):
+        if 'conv_aliases' not in self.userfile[fromstripped]:
+            hobj = self.userfile[fromstripped]
+            hobj['conv_aliases'] = {}
+            self.userfile[fromstripped] = hobj
+            self.userfile.sync()
+
+    def conv_alias_to_gaia_id(self, conv_alias, fromstripped):
+        self.create_conv_alias_dict_if_not_exist(fromstripped)
+
+        aliases = self.userfile[fromstripped]['conv_aliases']
+
+        for gaia_id in aliases:
+            if aliases[gaia_id] == conv_alias:
+                return gaia_id
+
+        return conv_alias  # Input is not an alias.
+
+    def gaia_id_to_conv_alias(self, gaia_id, fromstripped):
+        self.create_conv_alias_dict_if_not_exist(fromstripped)
+
+        aliases = self.userfile[fromstripped]['conv_aliases']
+
+        if gaia_id in aliases:
+            return aliases[gaia_id]
+
+        return gaia_id  # No alias found.
+
     def send_presence(self, fromjid, jid, typ=None, show=None):
         self.jabber.send(Presence(frm=jid, to=fromjid, typ=typ, show=show))
 
@@ -741,7 +773,12 @@ class Transport:
             # Receive the list of conversation:
             # Store it and initialize the list of connected resources for each.
             hobj = self.userlist[fromjid]
-            hobj['conv_list'] = message['conv_list']
+            hobj['conv_list'] = {}
+            for conv_id in message['conv_list']:
+                aliased_conv_id = self.gaia_id_to_conv_alias(conv_id, fromjid)
+                message['conv_list'][conv_id]['conv_id'] = aliased_conv_id
+                hobj['conv_list'][aliased_conv_id] = message['conv_list'][conv_id]
+
             for conv_id in message['conv_list']:
                 conv = message['conv_list'][conv_id]
                 conv['connected_jids'] = {}
@@ -767,6 +804,7 @@ class Transport:
 
             elif message['type'] == 'group':
                 # Message is from a multi-user chat.
+                message['conv_id'] = self.gaia_id_to_conv_alias(message['conv_id'], fromjid)
                 if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                     conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
                     if message['gaia_id'] in conv['user_list']:
@@ -807,6 +845,7 @@ class Transport:
                 self.jabber.send(m)
 
         elif message['what'] == 'conversation_history':
+            message['conv_id'] = self.gaia_id_to_conv_alias(message['conv_id'], fromjid)
             conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
             if message['recipient_jid'] in conv['connected_jids']:
                 for event in message['history']:
@@ -865,6 +904,7 @@ class Transport:
 
         elif message['what'] == 'conversation_rename':
             # Group chat was renamed
+            message['conv_id'] = self.gaia_id_to_conv_alias(message['conv_id'], fromjid)
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                 conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
                 if conv['topic'] != message['new_name']:
@@ -880,6 +920,7 @@ class Transport:
             # Group chat was created/found: add it to the list
             hobj = self.userlist[fromjid]
             conv_id = message['conv']['conv_id']
+            conv_id = self.gaia_id_to_conv_alias(conv_id, fromjid)
 
             hobj['conv_list'][conv_id] = message['conv']
             conv = hobj['conv_list'][conv_id]
@@ -888,6 +929,7 @@ class Transport:
 
         elif message['what'] == 'conversation_membership_change':
             # Members were added or removed from group chat
+            message['conv_id'] = self.gaia_id_to_conv_alias(message['conv_id'], fromjid)
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                 conv = self.userlist[fromjid]['conv_list'][message['conv_id']]
                 if 'new_members' in message:
@@ -937,6 +979,7 @@ class Transport:
 
         elif message['what'] == 'chat_message_error':
             # A chat message from XMPP was not delivered.
+            message['conv_id'] = self.gaia_id_to_conv_alias(message['conv_id'], fromjid)
             if message['conv_id'] in self.userlist[fromjid]['conv_list']:
                 error_node = Node('error', {'type': 'cancel', 'code': 503})
                 error_node.addChild('service-unavailable', namespace=NS_XMPP_STANZAS)
