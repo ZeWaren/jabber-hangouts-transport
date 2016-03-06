@@ -1,4 +1,5 @@
 import time
+import datetime
 import logging
 import threading
 from multiprocessing import Queue, Lock
@@ -7,6 +8,7 @@ import urllib.request
 import base64
 import hashlib
 import os
+import re
 
 import config
 import xmpp
@@ -14,13 +16,17 @@ import xmpp.client
 import xmpp.protocol
 from xmpp.browser import Browser
 from xmpp.protocol import Presence, Message, Error, Iq, NodeProcessed, JID, DataForm
-from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, NS_VCARD, NS_AVATAR, NS_MUC, NS_MUC_UNIQUE, NS_DISCO_ITEMS
+from xmpp.protocol import NS_REGISTER, NS_PRESENCE, NS_VERSION, NS_COMMANDS, NS_DISCO_INFO, NS_CHATSTATES, NS_ROSTERX, \
+    NS_VCARD, NS_AVATAR, NS_MUC, NS_MUC_UNIQUE, NS_DISCO_ITEMS, NS_DATA
 from xmpp.simplexml import Node
 from toolbox import MucUser
 import jh_hangups
 
 NODE_ROSTER = 'roster'
 NODE_VCARDUPDATE = 'vcard-temp:x:update x'
+NODE_COMMANDS = 'http://jabber.org/protocol/commands'
+NODE_SET_ALIAS = 'set_alias'
+NODE_REMOVE_ALIAS = 'remove_alias'
 NS_CONFERENCE = 'jabber:x:conference'
 NS_DELAY = 'urn:xmpp:delay'
 NS_XMPP_STANZAS = 'urn:ietf:params:xml:ns:xmpp-stanzas'
@@ -64,6 +70,7 @@ class Transport:
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_get, typ='get', ns=NS_REGISTER)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_register_set, typ='set', ns=NS_REGISTER)
         self.jabber.RegisterHandler('iq', self.xmpp_iq_vcard, typ='get', ns=NS_VCARD)
+        self.jabber.RegisterHandler('iq', self.xmpp_iq_command, typ='set', ns=NS_COMMANDS)
 
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
@@ -142,31 +149,87 @@ class Transport:
 
                 elif gaia_id in self.userlist[fromstripped]['conv_list']:
                     # JID of a multi-user conversation
-                    if ev_type == 'info':
-                        # Declare the conversation.
-                        conv = self.userlist[fromstripped]['conv_list'][gaia_id]
-                        result = {'ids': [{'category': 'conference',
-                                           'type': 'text',
-                                           'name': gaia_id}],
-                                  'features': [NS_MUC, NS_VCARD]}
-                        data = {'muc#roominfo_description': conv['topic'],
-                                'muc#roominfo_subject': conv['topic'],
-                                'muc#roominfo_occupants': len(conv['user_list']),
-                                'muc#roomconfig_changesubject': 1}
-                        info = DataForm(typ='result', data=data)
-                        field = info.setField('FORM_TYPE')
-                        field.setType('hidden')
-                        field.setValue('http://jabber.org/protocol/muc#roominfo')
-                        result['xdata'] = info
-                        return result
-                    elif ev_type == 'items':
-                        # List the participants of the conversation.
-                        alist = []
-                        conv = self.userlist[fromstripped]['conv_list'][gaia_id]
-                        for user in conv['user_list']:
-                            alist.append({'jid': '%s@%s' % (user, config.jid),
-                                          'name': conv['user_list'][user]})
-                        return alist
+                    if node is None:
+                        if ev_type == 'info':
+                            # Declare the conversation.
+                            conv = self.userlist[fromstripped]['conv_list'][gaia_id]
+                            result = {'ids': [{'category': 'conference',
+                                               'type': 'text',
+                                               'name': gaia_id}],
+                                      'features': [NS_MUC, NS_VCARD, NS_COMMANDS]}
+                            data = {'muc#roominfo_description': conv['topic'],
+                                    'muc#roominfo_subject': conv['topic'],
+                                    'muc#roominfo_occupants': len(conv['user_list']),
+                                    'muc#roomconfig_changesubject': 1}
+                            info = DataForm(typ='result', data=data)
+                            field = info.setField('FORM_TYPE')
+                            field.setType('hidden')
+                            field.setValue('http://jabber.org/protocol/muc#roominfo')
+                            result['xdata'] = info
+                            return result
+                        elif ev_type == 'items':
+                            # List the participants of the conversation.
+                            alist = []
+                            conv = self.userlist[fromstripped]['conv_list'][gaia_id]
+                            for user in conv['user_list']:
+                                alist.append({'jid': '%s@%s' % (user, config.jid),
+                                              'name': conv['user_list'][user]})
+                            return alist
+
+                    #
+                    # XMPP commands:
+                    # See: XEP-0050: Ad-Hoc Commands -> 2. Use Cases ->  2.2 Retrieving the Command List:
+                    # http://xmpp.org/extensions/xep-0050.html#retrieve
+                    #
+                    elif node == NODE_COMMANDS:
+                        if ev_type == 'items':
+                            # List the available commands.
+                            commands = []
+                            self.create_conv_alias_dict_if_not_exist(fromstripped)
+
+                            # Is the id an alias?
+                            alias_found = False
+                            for alias in self.userfile[fromstripped]['conv_aliases']:
+                                if self.userfile[fromstripped]['conv_aliases'][alias] == gaia_id:
+                                    commands.append({'jid': '%s@%s' % (gaia_id, config.jid),
+                                                     'node': NODE_REMOVE_ALIAS,
+                                                     'name': 'Remove alias',
+                                                     })
+                                    alias_found = True
+                                    break
+
+                            if not alias_found:
+                                commands.append({'jid': '%s@%s' % (gaia_id, config.jid),
+                                                 'node': NODE_SET_ALIAS,
+                                                 'name': 'Set alias',
+                                                 })
+                            return commands
+                    elif node == NODE_SET_ALIAS:
+                        if ev_type == 'info':
+                            reply_payload = [Node('identify', {'name': 'Set alias',
+                                                               'category': 'automation',
+                                                               'type': 'command-node'}),
+                                            Node('feature', {'var': 'http://jabber.org/protocol/commands'}),
+                                            Node('feature', {'var': 'jabber:x:data'})]
+
+                            m = event.buildReply('result')
+                            m.setQueryPayload(reply_payload)
+                            self.jabber.send(m)
+                    elif node == NODE_REMOVE_ALIAS:
+                        if ev_type == 'info':
+                            reply_payload = [Node('identify', {'name': 'Remove alias',
+                                                               'category': 'automation',
+                                                               'type': 'command-node'}),
+                                            Node('feature', {'var': 'http://jabber.org/protocol/commands'}),
+                                            Node('feature', {'var': 'jabber:x:data'})]
+
+                            m = event.buildReply('result')
+                            m.setQueryPayload(reply_payload)
+                            self.jabber.send(m)
+
+                    else:
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
+                        raise NodeProcessed
                 else:
                     # User/Conversation does not exist.
                     self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
@@ -651,6 +714,142 @@ class Transport:
                 m = Presence(to=fromjid, frm=config.jid, typ='unavailable')
                 self.jabber.send(m)
 
+            else:
+                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+        else:
+            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
+        raise NodeProcessed
+
+    def xmpp_iq_command(self, con, event):
+        #
+        # See: XEP-0050: Ad-Hoc Commands -> 2. Use Cases -> 2.4 Executing Commands -> 2.4.2 Multiple Stages:
+        # http://xmpp.org/extensions/xep-0050.html#execute-multiple
+        #
+        if event.getTo().getDomain() == config.jid:
+            fromjid = event.getFrom()
+            fromstripped = fromjid.getStripped()
+            node = event.getQuerynode()
+            action = event.getQuery().getAttr('action')
+
+            gaia_id = event.getTo().getNode()
+            if gaia_id in self.userlist[fromstripped]['conv_list']:
+                if node == NODE_SET_ALIAS:
+                    if action is None:
+                        if len(event.getQuery().getChildren()) == 0:
+                            action = 'execute'
+                        else:
+                            action = 'executing'
+
+                    if action == 'execute':
+                        actions = Node('actions', {'execute': 'complete'}, [Node('complete')])
+                        form = Node('x', {'type': 'form'})
+                        form.setNamespace('jabber:x:data')
+                        form.addChild('title', payload='Add an alias to a conversation.')
+                        form.addChild('instructions', payload='Choose an alias.')
+                        form.addChild('field', {'var': 'alias',
+                                                'type': 'text-single',
+                                                'label': 'New alias'})
+
+                        m = event.buildReply('result')
+                        command = m.getTag('command')
+                        command.setAttr('node', NODE_SET_ALIAS)
+                        command.setAttr('status', 'executing')
+                        session_id = 'set_conv_alias:%s' % (datetime.datetime.now().isoformat(),)
+                        command.setAttr('session_id', session_id)
+                        m.setQueryPayload([actions, form])
+                        self.jabber.send(m)
+
+                    elif action == 'executing':
+                        form = DataForm(node=event.getTag('command').getTag('x', namespace=NS_DATA))
+                        alias = form.getField('alias').getValue()
+
+                        if re.match('^[a-z0-9_]+$', alias):
+                            # Create the alias.
+                            self.create_conv_alias_dict_if_not_exist(fromstripped)
+                            hobj = self.userfile[fromstripped]
+                            hobj['conv_aliases'][gaia_id] = alias
+                            self.userfile[fromstripped] = hobj
+                            self.userfile.sync()
+
+                            # Fix the conv list.
+                            self.userlist[fromstripped]['conv_list'][alias] = \
+                                self.userlist[fromstripped]['conv_list'][gaia_id]
+                            del self.userlist[fromstripped]['conv_list'][gaia_id]
+
+                            # Reset the client lists.
+                            self.userlist[fromstripped]['conv_list'][alias]['connected_jids'] = {}
+                            self.userlist[fromstripped]['conv_list'][alias]['invited_jids'] = {}
+
+                            # Reply.
+                            m = event.buildReply('result')
+                            command = m.getTag('command')
+                            command.setAttr('node', NODE_SET_ALIAS)
+                            command.setAttr('status', 'completed')
+                            command.setAttr('session_id', event.getQuery().getAttr('session'))
+                            command.addChild('note', {'type': 'info'}, payload='Alias was added.')
+                            self.jabber.send(m)
+                        else:
+                            # Reply with an error.
+                            m = event.buildReply('result')
+                            command = m.getTag('command')
+                            command.setAttr('node', NODE_SET_ALIAS)
+                            command.setAttr('status', 'completed')
+                            command.setAttr('session_id', event.getQuery().getAttr('session'))
+                            command.addChild('note', {'type': 'error'}, payload='Alias contains invalid characters.')
+                            self.jabber.send(m)
+
+                    elif action == 'cancel':
+                        m = event.buildReply('result')
+                        command = m.getTag('command')
+                        command.setAttr('node', NODE_SET_ALIAS)
+                        command.setAttr('status', 'canceled')
+                        command.setAttr('session_id', event.getQuery().getAttr('session'))
+                        self.jabber.send(m)
+
+                elif node == NODE_REMOVE_ALIAS:
+                    if action is None:
+                        if len(event.getQuery().getChildren()) == 0:
+                            action = 'execute'
+                        else:
+                            action = 'executing'
+
+                    if action == 'execute':
+                        # Remove the alias.
+                        self.create_conv_alias_dict_if_not_exist(fromstripped)
+                        hobj = self.userfile[fromstripped]
+                        for real_gaia_id in hobj['conv_aliases']:
+                            if hobj['conv_aliases'][real_gaia_id] == gaia_id:
+                                # Remove the alias entry.
+                                del hobj['conv_aliases'][real_gaia_id]
+                                self.userfile[fromstripped] = hobj
+                                self.userfile.sync()
+
+                                # Fix the conv list.
+                                self.userlist[fromstripped]['conv_list'][real_gaia_id] = \
+                                    self.userlist[fromstripped]['conv_list'][gaia_id]
+                                del self.userlist[fromstripped]['conv_list'][gaia_id]
+
+                                # Reset the client lists.
+                                self.userlist[fromstripped]['conv_list'][real_gaia_id]['connected_jids'] = {}
+                                self.userlist[fromstripped]['conv_list'][real_gaia_id]['invited_jids'] = {}
+
+                                break
+                        # Reply.
+                        m = event.buildReply('result')
+                        command = m.getTag('command')
+                        command.setAttr('node', NODE_SET_ALIAS)
+                        command.setAttr('status', 'completed')
+                        command.setAttr('session_id', event.getQuery().getAttr('session'))
+                        command.addChild('note', {'type': 'info'}, payload='Alias was removed.')
+                        self.jabber.send(m)
+
+                    elif action == 'cancel':
+                        m = event.buildReply('result')
+                        command = m.getTag('command')
+                        command.setAttr('node', NODE_SET_ALIAS)
+                        command.setAttr('status', 'canceled')
+                        command.setAttr('session_id', event.getQuery().getAttr('session'))
+                        self.jabber.send(m)
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
         else:
