@@ -92,8 +92,6 @@ Please look at the comments in the provided example config file for information 
     hosts:
       "hangups.example.net":
         password: "secret"
-      "conf.hangups.example.net":
-        password: "secret"
 </pre>
 
 ### Startup

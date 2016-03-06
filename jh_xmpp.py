@@ -68,7 +68,6 @@ class Transport:
         self.disco = Browser()
         self.disco.PlugIn(self.jabber)
         self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid=config.jid)
-        self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid=config.confjid)
         self.disco.setDiscoHandler(self.xmpp_base_disco, node='', jid='')
 
     # Disco Handlers
@@ -87,7 +86,7 @@ class Transport:
                 if ev_type == 'items':
                     alist = [
                         {'node': NODE_ROSTER, 'name': config.discoName + ' Roster', 'jid': config.jid},
-                        {'name': config.discoName + ' group chats', 'jid': config.confjid},
+                        {'name': config.discoName + ' group chats', 'jid': 'conf@%s' % (config.jid,)},
                     ]
                     return alist
             elif node == NODE_ROSTER:
@@ -104,57 +103,51 @@ class Transport:
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
-        elif to == config.confjid:
-            # JID of the multi-user chat system
-            if node is None:
-                if ev_type == 'info':
-                    if fromstripped == config.mainServerJID:
-                        raise NodeProcessed
-                    # Declare the conference node
-                    return {'ids': [{'category': 'conference',
-                                     'type': 'text',
-                                     'name': config.discoName + ' group chats'}],
-                            'features': [NS_MUC, NS_MUC_UNIQUE, NS_VERSION, NS_DISCO_INFO, NS_DISCO_ITEMS]}
-                if ev_type == 'items':
-                    # Return a list of the available conversations
-                    alist = []
-                    if fromstripped in self.userlist:
-                        for conv_id in self.userlist[fromstripped]['conv_list']:
-                            conv = self.userlist[fromstripped]['conv_list'][conv_id]
-                            alist.append({'jid': '%s@%s' % (conv_id, config.confjid), 'name': conv['topic']})
-                    return alist
+
         elif to.getDomain() == config.jid:
-            # JID of a contact
-            if fromstripped in self.userlist:
+            if to.getNode() == 'conf':
+                # JID of the multi-user chat system
+                if node is None:
+                    if ev_type == 'info':
+                        if fromstripped == config.mainServerJID:
+                            raise NodeProcessed
+                        # Declare the conference node
+                        return {'ids': [{'category': 'conference',
+                                         'type': 'text',
+                                         'name': config.discoName + ' group chats'}],
+                                'features': [NS_MUC, NS_MUC_UNIQUE, NS_VERSION, NS_DISCO_INFO, NS_DISCO_ITEMS]}
+                    if ev_type == 'items':
+                        # Return a list of the available conversations
+                        alist = []
+                        if fromstripped in self.userlist:
+                            for conv_id in self.userlist[fromstripped]['conv_list']:
+                                conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                                alist.append({'jid': '%s@%s' % (conv_id, config.jid), 'name': conv['topic']})
+                        return alist
+
+            elif fromstripped in self.userlist:
                 gaia_id = event.getTo().getNode()
-                if ev_type == 'info':
-                    if gaia_id in self.userlist[fromstripped]['user_list']:
-                        # Contact exists, declare it as being chatable and also declare that it has a VCarc
+                if gaia_id in self.userlist[fromstripped]['user_list']:
+                    # JID of a contact.
+                    if ev_type == 'info':
+                        # Contact exists, declare it as being chatable and also declare that it has a VCard.
                         features = [NS_VCARD, NS_VERSION, NS_CHATSTATES]
                         return {'ids': [{'category': 'client',
                                          'type': 'hangouts',
                                          'name': self.userlist[fromstripped]['user_list'][gaia_id]['full_name']}],
                                 'features': features}
-                    else:
-                        # Contact does not exist
-                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-                if ev_type == 'items':
-                    # Contact nodes don't have children
-                    if gaia_id in self.userlist[fromstripped]['user_list']:
+                    elif ev_type == 'items':
+                        # Contact nodes don't have children.
                         return []
-            else:
-                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-        elif to.getDomain() == config.confjid:
-            # JID of a multi-user conversation
-            if ev_type == 'info':
-                if fromstripped in self.userlist:
-                    # Declare the conversation
-                    conv_id = event.getTo().getNode()
-                    if conv_id in self.userlist[fromstripped]['conv_list']:
-                        conv = self.userlist[fromstripped]['conv_list'][conv_id]
+
+                elif gaia_id in self.userlist[fromstripped]['conv_list']:
+                    # JID of a multi-user conversation
+                    if ev_type == 'info':
+                        # Declare the conversation.
+                        conv = self.userlist[fromstripped]['conv_list'][gaia_id]
                         result = {'ids': [{'category': 'conference',
                                            'type': 'text',
-                                           'name': conv_id}],
+                                           'name': gaia_id}],
                                   'features': [NS_MUC, NS_VCARD]}
                         data = {'muc#roominfo_description': conv['topic'],
                                 'muc#roominfo_subject': conv['topic'],
@@ -166,23 +159,18 @@ class Transport:
                         field.setValue('http://jabber.org/protocol/muc#roominfo')
                         result['xdata'] = info
                         return result
-                    else:
-                        # Conversation does not exist
-                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-                else:
-                    # Transport user does not exist
-                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-            if ev_type == 'items':
-                # List the participant of the conversation
-                alist = []
-                if fromstripped in self.userlist:
-                    conv_id = event.getTo().getNode()
-                    if conv_id in self.userlist[fromstripped]['conv_list']:
-                        conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                    elif ev_type == 'items':
+                        # List the participants of the conversation.
+                        alist = []
+                        conv = self.userlist[fromstripped]['conv_list'][gaia_id]
                         for user in conv['user_list']:
                             alist.append({'jid': '%s@%s' % (user, config.jid),
                                           'name': conv['user_list'][user]})
-                return alist
+                        return alist
+                else:
+                    # User/Conversation does not exist.
+                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+
         else:
             self.jabber.send(Error(event, xmpp.protocol.ERRS['MALFORMED_JID']))
             raise NodeProcessed
@@ -194,81 +182,12 @@ class Transport:
 
         if fromstripped in self.userfile:
             if event.getTo().getDomain() == config.jid:
-                # Main JID of the transport
-                if event.getType() == 'subscribed':
-                    if fromstripped in self.userlist:
-                        if event.getTo() == config.jid and not self.userfile[fromstripped]['subscribed']:
-                            conf = self.userfile[fromstripped]
-                            conf['subscribed'] = True
-                            self.userfile[fromstripped] = conf
-                            self.userfile.sync()
+                node = event.getTo().getNode()
 
-                            # User has subscribed to the transport: send the list of contacts:
-                            for user in self.userlist[fromstripped]['user_list']:
-                                self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
-                                                          to=fromjid,
-                                                          typ='subscribe'))
-
-                            m = Presence(to=fromjid, frm=config.jid)
-                            self.jabber.send(m)
-                    else:
-                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-
-                elif event.getType() == 'subscribe':
-                    if fromstripped in self.userlist:
-                        if event.getTo() == config.jid:
-                            # Resource subscribed to the transport: send reply.
-                            m = Presence(to=fromjid, frm=config.jid, typ='subscribed')
-                            self.jabber.send(m)
-                        else:
-                            # User tries to add a new contact.
-                            # This is currently unsupported.
-                            # See: XEP-0100: Gateway Interaction -> 5. Legacy User Use Cases -> 5.1 Add Contact
-                            # -> 5.1.2 Alternate Flows -> Example 49. Jabber User Denies Subscription Request:
-                            # http://www.xmpp.org/extensions/xep-0100.html#usecases-legacy-add-alt
-                            self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='unsubscribed'))
-                    else:
-                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
-
-                elif event.getType() == 'unsubscribed':
-                    # should do something more elegant here
-                    pass
-
-                elif event.getType() is None or event.getType() == 'available' or event.getType() == 'invisible':
-                    if event.getTo() == config.jid:
-                        # Transport user has become connected
-                        self.xmpp_resource_join(event.getFrom())
-
-                elif event.getType() == 'unavailable':
-                    if event.getTo() == config.jid:
-                        # A resource has become disconnected:
-                        # remove it from the list.
-                        if fromstripped in self.userlist:
-                            # Delete any invitation to multi-user chat.
-                            for conv_id in self.userlist[fromstripped]['conv_list']:
-                                conv = self.userlist[fromstripped]['conv_list'][conv_id]
-                                if fromjid in conv['invited_jids']:
-                                    del conv['invited_jids'][fromjid]
-
-                            # Remove from the main list
-                            if fromjid in self.userlist[fromstripped]['connected_jids']:
-                                del self.userlist[fromstripped]['connected_jids'][fromjid]
-                                if len(self.userlist[fromstripped]['connected_jids']) == 0:
-                                    # Removed resource was the last one:
-                                    # disconnect Hangout and delete the associated thread.
-                                    jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
-                                    hobj = self.userlist[fromstripped]
-                                    del self.userlist[fromstripped]
-                                    del hobj
-                        else:
-                            self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
-
-            elif event.getTo().getDomain() == config.confjid:
-                # JID of the multi-user chat system.
-                conv_id = event.getTo().getNode()
-                if fromstripped in self.userlist and conv_id in self.userlist[fromstripped]['conv_list']:
-                    # Conversation was found.
-                    conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                if (fromstripped in self.userlist) and (node in self.userlist[fromstripped]['conv_list']):
+                    # Message is about a conversation.
+                    conv = self.userlist[fromstripped]['conv_list'][node]
+                    conv_id = node
 
                     if event.getType() == 'available' or event.getType() is None or event.getType() == '':
                         if fromjid not in conv['connected_jids']:
@@ -291,7 +210,7 @@ class Transport:
                                     self_user = user
                                 else:
                                     # User is not self, send presence
-                                    p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][user]),
+                                    p = Presence(frm='%s@%s/%s' % (conv_id, config.jid, conv['user_list'][user]),
                                                  to=event.getFrom(),
                                                  payload=[MucUser(role='participant',
                                                                   affiliation='member',
@@ -307,7 +226,7 @@ class Transport:
                                 # Code 210 means that we renamed the self user.
                                 muc_user.addChild('status', {'code': 110})
                                 muc_user.addChild('status', {'code': 210})
-                                p = Presence(frm='%s@%s/%s' % (conv_id, config.confjid, conv['user_list'][self_user]),
+                                p = Presence(frm='%s@%s/%s' % (conv_id, config.jid, conv['user_list'][self_user]),
                                              to=event.getFrom(),
                                              payload=[muc_user])
                                 self.jabber.send(p)
@@ -319,19 +238,77 @@ class Transport:
                             del conv['connected_jids'][event.getFrom()]
                     else:
                         self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_FEATURE_NOT_IMPLEMENTED']))
+
                 else:
-                    # Conversation was not found
-                    # See: XEP-0045: Multi-User Chat -> 7.2.7 Members-Only Rooms
-                    # -> Example 29. Service Denies Access Because User Is Not on Member List:
-                    # http://xmpp.org/extensions/xep-0045.html#enter-members
-                    error_node = Node('error', {'by': '%s@%s' % (conv_id, config.confjid),
-                                                'type': 'auth'})
-                    error_node.addChild('registration-required', namespace=NS_XMPP_STANZAS)
-                    p = Presence(frm=event.getTo(),
-                                 to=event.getFrom(),
-                                 typ='error',
-                                 payload=[error_node])
-                    self.jabber.send(p)
+                    # Message is about the transport.
+                    if event.getType() == 'subscribed':
+                        if fromstripped in self.userlist:
+                            if event.getTo() == config.jid and not self.userfile[fromstripped]['subscribed']:
+                                conf = self.userfile[fromstripped]
+                                conf['subscribed'] = True
+                                self.userfile[fromstripped] = conf
+                                self.userfile.sync()
+
+                                # User has subscribed to the transport: send the list of contacts:
+                                for user in self.userlist[fromstripped]['user_list']:
+                                    self.jabber.send(Presence(frm='%s@%s' % (user, config.jid),
+                                                              to=fromjid,
+                                                              typ='subscribe'))
+
+                                m = Presence(to=fromjid, frm=config.jid)
+                                self.jabber.send(m)
+                        else:
+                            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+
+                    elif event.getType() == 'subscribe':
+                        if fromstripped in self.userlist:
+                            if event.getTo() == config.jid:
+                                # Resource subscribed to the transport: send reply.
+                                m = Presence(to=fromjid, frm=config.jid, typ='subscribed')
+                                self.jabber.send(m)
+                            else:
+                                # User tries to add a new contact.
+                                # This is currently unsupported.
+                                # See: XEP-0100: Gateway Interaction -> 5. Legacy User Use Cases -> 5.1 Add Contact
+                                # -> 5.1.2 Alternate Flows -> Example 49. Jabber User Denies Subscription Request:
+                                # http://www.xmpp.org/extensions/xep-0100.html#usecases-legacy-add-alt
+                                self.jabber.send(Presence(frm=event.getTo(), to=event.getFrom(), typ='unsubscribed'))
+                        else:
+                            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_NOT_ACCEPTABLE']))
+
+                    elif event.getType() == 'unsubscribed':
+                        # should do something more elegant here
+                        pass
+
+                    elif event.getType() is None or event.getType() == 'available' or event.getType() == 'invisible':
+                        if event.getTo() == config.jid:
+                            # Transport user has become connected
+                            self.xmpp_resource_join(event.getFrom())
+
+                    elif event.getType() == 'unavailable':
+                        if event.getTo() == config.jid:
+                            # A resource has become disconnected:
+                            # remove it from the list.
+                            if fromstripped in self.userlist:
+                                # Delete any invitation to multi-user chat.
+                                for conv_id in self.userlist[fromstripped]['conv_list']:
+                                    conv = self.userlist[fromstripped]['conv_list'][conv_id]
+                                    if fromjid in conv['invited_jids']:
+                                        del conv['invited_jids'][fromjid]
+
+                                # Remove from the main list
+                                if fromjid in self.userlist[fromstripped]['connected_jids']:
+                                    del self.userlist[fromstripped]['connected_jids'][fromjid]
+                                    if len(self.userlist[fromstripped]['connected_jids']) == 0:
+                                        # Removed resource was the last one:
+                                        # disconnect Hangout and delete the associated thread.
+                                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'disconnect'})
+                                        hobj = self.userlist[fromstripped]
+                                        del self.userlist[fromstripped]
+                                        del hobj
+                            else:
+                                self.jabber.send(Presence(to=fromjid, frm=config.jid, typ='unavailable'))
+
         else:
             # Need to add auto-unsubscribe on probe events here.
             if event.getType() == 'probe':
@@ -419,62 +396,61 @@ class Transport:
             if fromstripped in self.userlist:
                 # User is found.
                 if event.getTo().getDomain() == config.jid:
-                    # Message is a regular chat message.
-                    if event.getBody() is None:
-                        # No body => typing notification.
-                        state = 'paused'
-                        if event.getTag('composing', namespace=NS_CHATSTATES):
-                            state = 'started'
-                        # Send notification.
-                        jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'typing_notification',
-                                                                               'type': 'one_to_one',
-                                                                               'gaia_id': event.getTo().getNode(),
-                                                                               'state': state})
-                        return
+                    gaia_id = event.getTo().getNode()
 
-                    resource = 'messenger'
-                    if resource == 'messenger':
-                        if event.getType() is None or event.getType() == 'normal':
-                            # Uninteresting type
-                            pass
-                        elif event.getType() == 'chat':
-                            # Forward the chat message to the Hangouts thread.
-                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
-                                                                                   'type': 'one_to_one',
-                                                                                   'gaia_id': event.getTo().getNode(),
-                                                                                   'sender_jid': from_jid,
-                                                                                   'message': event.getBody()})
-                        else:
-                            # Unknown type
-                            self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
-
-                elif event.getTo().getDomain() == config.confjid:
-                    # Message is from a multi-user chat.
-                    conv_id = event.getTo().getNode()
-                    if conv_id in self.userlist[fromstripped]['conv_list']:
-                        # Conversation is found in the list.
+                    if gaia_id in self.userlist[fromstripped]['conv_list']:
+                        # Conversation is found in the list => message is in a group chat.
 
                         if event.getBody() is None and event.getSubject():
                             # Subject change request
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'conversation_rename',
-                                                                                   'conv_id': conv_id,
+                                                                                   'conv_id': gaia_id,
                                                                                    'new_name': event.getSubject()})
                         if (event.getBody() is not None and event.getBody() != '')\
                                 and (event.getTo().getResource() is None or event.getTo().getResource() == ''):
                             # Regular message
                             jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
                                                                                    'type': 'group',
-                                                                                   'conv_id': conv_id,
+                                                                                   'conv_id': gaia_id,
                                                                                    'sender_jid': from_jid,
                                                                                    'message': event.getBody()})
+                    elif gaia_id in self.userlist[fromstripped]['user_list']:
+                        # Message is a regular chat message.
+                        if event.getBody() is None:
+                            # No body => typing notification.
+                            state = 'paused'
+                            if event.getTag('composing', namespace=NS_CHATSTATES):
+                                state = 'started'
+                            # Send notification.
+                            jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'typing_notification',
+                                                                                   'type': 'one_to_one',
+                                                                                   'gaia_id': gaia_id,
+                                                                                   'state': state})
+                            return
+
+                        resource = 'messenger'
+                        if resource == 'messenger':
+                            if event.getType() is None or event.getType() == 'normal':
+                                # Uninteresting type
+                                pass
+                            elif event.getType() == 'chat':
+                                # Forward the chat message to the Hangouts thread.
+                                jh_hangups.hangups_manager.send_message(fromstripped, {'what': 'chat_message',
+                                                                                       'type': 'one_to_one',
+                                                                                       'gaia_id': event.getTo().getNode(),
+                                                                                       'sender_jid': from_jid,
+                                                                                       'message': event.getBody()})
+                            else:
+                                # Unknown type
+                                self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_BAD_REQUEST']))
                     else:
-                        # Conversation was not found: reply with an error message.
+                        # User or conversation was not found: reply with an error message.
                         error_node = Node('error', {'type': 'cancel', 'code': 503})
                         error_node.addChild('service-unavailable', namespace=NS_XMPP_STANZAS)
                         m = Message(typ='error',
-                                    frm='%s@%s' % (conv_id, config.confjid),
+                                    frm='%s@%s' % (gaia_id, config.jid),
                                     to=from_jid,
-                                    body='Conversation does not exist.', payload=[error_node])
+                                    body='User/Conversation does not exist.', payload=[error_node])
                         self.jabber.send(m)
             else:
                 # A message was received from someone who was not registered
@@ -500,56 +476,55 @@ class Transport:
                 self.jabber.send(m)
 
             elif event.getTo().getDomain() == config.jid:
-                # JID of a regular chat user.
-                nick = "Hangout User"
                 gaia_id = event.getTo().getNode()
+
                 if fromstripped in self.userlist:
-                    if gaia_id in self.userlist[fromstripped]['user_list']:
+                    if gaia_id in self.userlist[fromstripped]['conv_list']:
+                        # JID of a group chat.
+                        conv = self.userlist[fromstripped]['conv_list'][gaia_id]
+                        m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
+                        m.setID(event.getID())
+                        v = m.addChild(name='vCard', namespace=NS_VCARD)
+                        v.setTagData(tag='FN', val=conv['topic'])
+                        v.setTagData(tag='NICKNAME', val=conv['topic'])
+                        self.jabber.send(m)
+
+                    elif gaia_id in self.userlist[fromstripped]['user_list']:
+                        # JID of a regular chat user
                         nick = self.userlist[fromstripped]['user_list'][gaia_id]['full_name']
 
-                m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
-                m.setID(event.getID())
-                v = m.addChild(name='vCard', namespace=NS_VCARD)
-                v.setTagData(tag='FN', val=nick)
-                v.setTagData(tag='NICKNAME', val=nick)
+                        m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
+                        m.setID(event.getID())
+                        v = m.addChild(name='vCard', namespace=NS_VCARD)
+                        v.setTagData(tag='FN', val=nick)
+                        v.setTagData(tag='NICKNAME', val=nick)
 
-                # If user is found in the list, try to add more information into the card.
-                if fromstripped in self.userlist:
-                    if self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'] != '':
-                        p = v.addChild(name='PHOTO')
-                        p.setTagData(tag='TYPE', val='image/jpeg')
-                        photo = download_url(self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'])
-                        p.setTagData(tag='BINVAL',
-                                     val=base64.b64encode(photo).decode())
-                    if len(self.userlist[fromstripped]['user_list'][gaia_id]['phones']) > 0:
-                        p = v.addChild(name='TEL')
-                        p.addChild(name='HOME')
-                        p.addChild(name='VOICE')
-                        p.addChild(name='NUMBER',
-                                   payload=self.userlist[fromstripped]['user_list'][gaia_id]['phones'][0])
-                    if len(self.userlist[fromstripped]['user_list'][gaia_id]['emails']) > 0:
-                        p = v.addChild(name='EMAIL')
-                        p.addChild(name='INTERNET')
-                        p.addChild(name='USERID',
-                                   payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
-                self.jabber.send(m)
+                        # Try to add more information into the card.
+                        if self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'] != '':
+                            p = v.addChild(name='PHOTO')
+                            p.setTagData(tag='TYPE', val='image/jpeg')
+                            photo = download_url(self.userlist[fromstripped]['user_list'][gaia_id]['photo_url'])
+                            p.setTagData(tag='BINVAL',
+                                         val=base64.b64encode(photo).decode())
+                        if len(self.userlist[fromstripped]['user_list'][gaia_id]['phones']) > 0:
+                            p = v.addChild(name='TEL')
+                            p.addChild(name='HOME')
+                            p.addChild(name='VOICE')
+                            p.addChild(name='NUMBER',
+                                       payload=self.userlist[fromstripped]['user_list'][gaia_id]['phones'][0])
+                        if len(self.userlist[fromstripped]['user_list'][gaia_id]['emails']) > 0:
+                            p = v.addChild(name='EMAIL')
+                            p.addChild(name='INTERNET')
+                            p.addChild(name='USERID',
+                                       payload=self.userlist[fromstripped]['user_list'][gaia_id]['emails'][0])
 
-            elif event.getTo().getDomain() == config.confjid:
-                # JID of a multi-user chat.
-                conv_id = event.getTo().getNode()
-                if fromstripped in self.userlist and conv_id in self.userlist[fromstripped]['conv_list']:
-                    # Conversation is found.
-                    conv = self.userlist[fromstripped]['conv_list'][conv_id]
-                    m = Iq(to=event.getFrom(), frm=event.getTo(), typ='result')
-                    m.setID(event.getID())
-                    v = m.addChild(name='vCard', namespace=NS_VCARD)
-                    v.setTagData(tag='FN', val=conv['topic'])
-                    v.setTagData(tag='NICKNAME', val=conv['topic'])
-                    self.jabber.send(m)
-                else:
-                    # Conversation was not found
-                    self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
-                    raise NodeProcessed
+                        self.jabber.send(m)
+
+                    else:
+                        # User/Conversation was not found.
+                        self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
+                        raise NodeProcessed
+
             else:
                 self.jabber.send(Error(event, xmpp.protocol.ERRS['ERR_ITEM_NOT_FOUND']))
                 raise NodeProcessed
@@ -800,7 +775,7 @@ class Transport:
                         nick = conv['user_list'][message['gaia_id']]
                         for ajid in conv['connected_jids']:
                             m = Message(typ='groupchat',
-                                        frm='%s@%s/%s' % (message['conv_id'], config.confjid, nick),
+                                        frm='%s@%s/%s' % (message['conv_id'], config.jid, nick),
                                         to=ajid,
                                         body=message['message'])
                             self.jabber.send(m)
@@ -810,10 +785,10 @@ class Transport:
                                 conv['invited_jids'][ajid] = True
                                 # See: XEP-0249: Direct MUC Invitations -> 2. How It Works -> Example 1:
                                 # http://xmpp.org/extensions/xep-0249.html
-                                node = Node('x', {'jid': '%s@%s' % (message['conv_id'], config.confjid),
+                                node = Node('x', {'jid': '%s@%s' % (message['conv_id'], config.jid),
                                                   'reason': 'New messages are in!'})
                                 node.setNamespace(NS_CONFERENCE)
-                                m = Message(frm=config.confjid,
+                                m = Message(frm=config.jid,
                                             to=ajid,
                                             payload=[node])
                                 self.jabber.send(m)
@@ -845,36 +820,36 @@ class Transport:
                         else:
                             nick = 'Unknown (%s)' % (event['gaia_id'],)
                         m = Message(typ='groupchat',
-                                    frm='%s@%s/%s' % (message['conv_id'], config.confjid, nick),
+                                    frm='%s@%s/%s' % (message['conv_id'], config.jid, nick),
                                     to=message['recipient_jid'],
                                     body=event['message'])
                     elif event['type'] == 'rename':
                         # Conversation was renamed
                         m = Message(typ='groupchat',
-                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    frm='%s@%s' % (message['conv_id'], config.jid),
                                     to=message['recipient_jid'],
                                     body='Conversation was renamed to: %s.' % (event['new_name']))
                     elif event['type'] == 'invite':
                         # Member has joined
                         m = Message(typ='groupchat',
-                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    frm='%s@%s' % (message['conv_id'], config.jid),
                                     to=message['recipient_jid'],
                                     body='%s has invited %s.' % (event['inviter'], event['invited']))
                     elif event['type'] == 'departure':
                         # Member has left
                         m = Message(typ='groupchat',
-                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    frm='%s@%s' % (message['conv_id'], config.jid),
                                     to=message['recipient_jid'],
                                     body='%s has left.' % (event['departed'],))
                     else:
                         # Unknown
                         m = Message(typ='groupchat',
-                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    frm='%s@%s' % (message['conv_id'], config.jid),
                                     to=message['recipient_jid'],
                                     body='[Unknown event]')
 
                     m.addChild('delay',
-                               attrs={'from': '%s@%s' % (message['conv_id'], config.confjid),
+                               attrs={'from': '%s@%s' % (message['conv_id'], config.jid),
                                       'stamp': event['timestamp'].isoformat()},
                                namespace=NS_DELAY)
                     self.jabber.send(m)
@@ -883,7 +858,7 @@ class Transport:
                 # See: XEP-0045: Multi-User Chat -> 7.2.16 Room Subject:
                 # http://xmpp.org/extensions/xep-0045.html#enter-subject
                 m = Message(typ='groupchat',
-                            frm='%s@%s' % (message['conv_id'], config.confjid),
+                            frm='%s@%s' % (message['conv_id'], config.jid),
                             to=message['recipient_jid'],
                             subject=conv['topic'])
                 self.jabber.send(m)
@@ -896,7 +871,7 @@ class Transport:
                     conv['topic'] = message['new_name']
                     for ajid in conv['connected_jids']:
                         m = Message(typ='groupchat',
-                                    frm='%s@%s' % (message['conv_id'], config.confjid),
+                                    frm='%s@%s' % (message['conv_id'], config.jid),
                                     to=ajid,
                                     subject=message['new_name'])
                         self.jabber.send(m)
@@ -923,7 +898,7 @@ class Transport:
                         # Send presence information to connected resources
                         for ajid in conv['connected_jids']:
                             p = Presence(frm='%s@%s/%s' % (message['conv_id'],
-                                                           config.confjid, message['new_members'][gaia_id]),
+                                                           config.jid, message['new_members'][gaia_id]),
                                          to=ajid,
                                          payload=[MucUser(role='participant',
                                                           affiliation='member',
@@ -939,7 +914,7 @@ class Transport:
                         # Send presence information to connected resources
                         for ajid in conv['connected_jids']:
                             p = Presence(frm='%s@%s/%s' % (message['conv_id'],
-                                                           config.confjid, message['old_members'][gaia_id]),
+                                                           config.jid, message['old_members'][gaia_id]),
                                          typ='unavailable',
                                          to=ajid,
                                          payload=[MucUser(role='none',
@@ -952,7 +927,7 @@ class Transport:
                         # Send a message and delete the conversation.
                         for ajid in conv['connected_jids']:
                             m = Message(typ='groupchat',
-                                        frm='%s@%s' % (message['conv_id'], config.confjid),
+                                        frm='%s@%s' % (message['conv_id'], config.jid),
                                         to=ajid,
                                         body='You have left the conversation in another client.')
                             self.jabber.send(m)
@@ -968,7 +943,7 @@ class Transport:
                 if message['type'] == 'one_to_one':
                     frm = '%s@%s' % (message['gaia_id'], config.jid)
                 else:
-                    frm = '%s@%s' % (message['conv_id'], config.confjid)
+                    frm = '%s@%s' % (message['conv_id'], config.jid)
                 m = Message(typ='error',
                             frm=frm,
                             to=message['recipient_jid'],
