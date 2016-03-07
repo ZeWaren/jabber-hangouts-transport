@@ -151,7 +151,7 @@ class TCPsocket(PlugIn):
                     return 'ok'
                 except socket.error as error:
                     if self._sock is not None: self._sock.close()
-            self.DEBUG("Failed to connect to remote host %s: %s (%s)"%(repr(server), error.strerror, error.errno),'error')
+                    self.DEBUG("Failed to connect to remote host %s: %s (%s)"%(repr(server), error.strerror, error.errno),'error')
         except socket.gaierror as gaierror:
             self.DEBUG("Failed to lookup remote host %s: %s (%s)"%(repr(server), gaierror.strerror, gaierror.errno),'error')
 
