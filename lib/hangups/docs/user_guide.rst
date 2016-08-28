@@ -1,8 +1,8 @@
 User Guide
 ==========
 
-This section is intended for end-users who want to use the textual user
-interface included with hangups.
+This page is intended for end-users who want to use the textual user interface
+included with hangups.
 
 Running
 -------
@@ -32,11 +32,11 @@ cache directory. The default token file path can be viewed using :code:`hangups
 
   hangups --token-path /path/to/refresh_token.txt
 
-hangups may be deauthorized from your Google account from the `Google Account
-Permissions page`_. hangups will be listed as "iOS device".
+hangups may be deauthorized from your Google account from the `Google recently
+used devices page`_. hangups will be listed as "iOS".
 
 .. _OAuth 2.0: http://oauth.net/2/
-.. _`Google Account Permissions page`: https://security.google.com/settings/security/permissions
+.. _`Google recently used devices page`: https://security.google.com/settings/security/activity
 
 Usage
 -----
@@ -50,7 +50,11 @@ tab. Once multiple tabs are open, use :code:`ctrl+u` and :code:`ctrl+d` and
 move up and down the list of tabs. Use :code:`ctrl+w` to close a tab.
 
 In a conversation tab, type a message and press :code:`enter` to send it, or
-use the up and arrows to scroll the list of previous messages.
+use the up and arrows to scroll the list of previous messages. hangups
+supports readline commands for editing text. See the `readlike library
+documentation`_ for a full list. Note that some of hangouts' bindings
+conflict with these key combinations, see the Configuration section on how to
+adjust key bindings.
 
 When new messages arrive, hangups will open a conversation tab in the
 background, and display the number of unread messages in the tab title. On
@@ -66,6 +70,8 @@ will eventually exit.
 
 To exit hangups, press :code:`ctrl+e`.
 
+.. _readlike library documentation: https://pypi.python.org/pypi/readlike
+
 Configuration
 -------------
 
@@ -78,6 +84,17 @@ Keybindings are specified using `urwid's format`_, for example: `ctrl e` or
 limitations or conflicts.
 
 .. _urwid's format: http://urwid.org/manual/userinput.html#keyboard-input
+
+Colours are specified using `urwid's colors`_, for example: `dark red` or
+`Xresources color1`. Standard Foreground and Background Colors can be found here
+for 16 bit palette.
+
+.. _urwid's colors: http://urwid.org/reference/constants.html#standard-background-and-foreground-colors
+
+Constants for 88-Color and 256-Color palettes for `urwid's hcolors`_.
+
+.. _urwid's hcolors: http://urwid.org/manual/displayattributes.html#high-colors
+
 
 Troubleshooting
 ---------------

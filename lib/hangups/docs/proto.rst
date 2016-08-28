@@ -60,6 +60,15 @@ Field           Number Type Label    Description
 :code:`tablet`  3      bool optional True if a tablet is active.           
 =============== ====== ==== ======== ======================================
 
+LastSeen
+--------
+
+================================ ====== ====== ======== ===========
+Field                            Number Type   Label    Description
+================================ ====== ====== ======== ===========
+:code:`last_seen_timestamp_usec` 1      uint64 optional            
+================================ ====== ====== ======== ===========
+
 Presence
 --------
 
@@ -69,7 +78,8 @@ Field                 Number Type            Label    Description
 :code:`reachable`     1      bool            optional            
 :code:`available`     2      bool            optional            
 :code:`device_status` 6      `DeviceStatus`_ optional            
-:code:`mood_setting`  9      `MoodSetting`_  optional            
+:code:`mood_message`  9      `MoodMessage`_  optional            
+:code:`last_seen`     10     `LastSeen`_     optional            
 ===================== ====== =============== ======== ===========
 
 PresenceResult
@@ -186,12 +196,13 @@ PlusPhoto.MediaType
 
 Media type.
 
-========================== ====== ===========
-Name                       Number Description
-========================== ====== ===========
-:code:`MEDIA_TYPE_UNKNOWN` 0                 
-:code:`MEDIA_TYPE_PHOTO`   1                 
-========================== ====== ===========
+================================= ====== ===========
+Name                              Number Description
+================================= ====== ===========
+:code:`MEDIA_TYPE_UNKNOWN`        0                 
+:code:`MEDIA_TYPE_PHOTO`          1                 
+:code:`MEDIA_TYPE_ANIMATED_PHOTO` 4                 
+================================= ====== ===========
 
 Place
 -----
@@ -337,29 +348,30 @@ Event
 
 Event that becomes part of a conversation's history.
 
-=============================== ====== ===================== ======== =============================================
-Field                           Number Type                  Label    Description                                  
-=============================== ====== ===================== ======== =============================================
-:code:`conversation_id`         1      `ConversationId`_     optional ID of the conversation this event belongs to.
-:code:`sender_id`               2      `ParticipantId`_      optional ID of the user that sent this event.         
-:code:`timestamp`               3      uint64                optional Timestamp when the event occurred.           
-:code:`self_event_state`        4      `UserEventState`_     optional                                              
-:code:`source_type`             6      `SourceType`_         optional                                              
-:code:`chat_message`            7      `ChatMessage`_        optional                                              
-:code:`membership_change`       9      `MembershipChange`_   optional                                              
-:code:`conversation_rename`     10     `ConversationRename`_ optional                                              
-:code:`hangout_event`           11     `HangoutEvent`_       optional                                              
-:code:`event_id`                12     string                optional Unique ID for the event.                     
-:code:`expiration_timestamp`    13     uint64                optional                                              
-:code:`otr_modification`        14     `OTRModification`_    optional                                              
-:code:`advances_sort_timestamp` 15     bool                  optional                                              
-:code:`otr_status`              16     `OffTheRecordStatus`_ optional                                              
-:code:`persisted`               17     bool                  optional                                              
-:code:`medium_type`             20     `DeliveryMedium`_     optional                                              
-:code:`event_type`              23     `EventType`_          optional The event's type.                            
-:code:`event_version`           24     uint64                optional Event version timestamp.                     
-:code:`hash_modifier`           26     `HashModifier`_       optional                                              
-=============================== ====== ===================== ======== =============================================
+======================================= ====== =============================== ======== =============================================
+Field                                   Number Type                            Label    Description                                  
+======================================= ====== =============================== ======== =============================================
+:code:`conversation_id`                 1      `ConversationId`_               optional ID of the conversation this event belongs to.
+:code:`sender_id`                       2      `ParticipantId`_                optional ID of the user that sent this event.         
+:code:`timestamp`                       3      uint64                          optional Timestamp when the event occurred.           
+:code:`self_event_state`                4      `UserEventState`_               optional                                              
+:code:`source_type`                     6      `SourceType`_                   optional                                              
+:code:`chat_message`                    7      `ChatMessage`_                  optional                                              
+:code:`membership_change`               9      `MembershipChange`_             optional                                              
+:code:`conversation_rename`             10     `ConversationRename`_           optional                                              
+:code:`hangout_event`                   11     `HangoutEvent`_                 optional                                              
+:code:`event_id`                        12     string                          optional Unique ID for the event.                     
+:code:`expiration_timestamp`            13     uint64                          optional                                              
+:code:`otr_modification`                14     `OTRModification`_              optional                                              
+:code:`advances_sort_timestamp`         15     bool                            optional                                              
+:code:`otr_status`                      16     `OffTheRecordStatus`_           optional                                              
+:code:`persisted`                       17     bool                            optional                                              
+:code:`medium_type`                     20     `DeliveryMedium`_               optional                                              
+:code:`event_type`                      23     `EventType`_                    optional The event's type.                            
+:code:`event_version`                   24     uint64                          optional Event version timestamp.                     
+:code:`hash_modifier`                   26     `HashModifier`_                 optional                                              
+:code:`group_link_sharing_modification` 31     `GroupLinkSharingModification`_ optional                                              
+======================================= ====== =============================== ======== =============================================
 
 UserReadState
 -------------
@@ -374,12 +386,12 @@ Field                         Number Type             Label    Description
 DeliveryMedium
 --------------
 
-=================== ====== ===================== ======== ======================================================
-Field               Number Type                  Label    Description                                           
-=================== ====== ===================== ======== ======================================================
-:code:`medium_type` 1      `DeliveryMediumType`_ optional                                                       
-:code:`phone`       2      `Phone`_              optional Phone number to use for sending Google Voice messages.
-=================== ====== ===================== ======== ======================================================
+==================== ====== ===================== ======== ======================================================
+Field                Number Type                  Label    Description                                           
+==================== ====== ===================== ======== ======================================================
+:code:`medium_type`  1      `DeliveryMediumType`_ optional                                                       
+:code:`phone_number` 2      `PhoneNumber`_        optional Phone number to use for sending Google Voice messages.
+==================== ====== ===================== ======== ======================================================
 
 DeliveryMediumOption
 --------------------
@@ -406,6 +418,7 @@ Field                          Number Type                    Label    Descripti
 :code:`invite_timestamp`       12     uint64                  optional            
 :code:`sort_timestamp`         13     uint64                  optional            
 :code:`active_timestamp`       14     uint64                  optional            
+:code:`invite_affinity`        15     `InvitationAffinity`_   optional            
 :code:`delivery_medium_option` 17     `DeliveryMediumOption`_ repeated            
 ============================== ====== ======================= ======== ===========
 
@@ -443,6 +456,7 @@ Field                                  Number Type                           Lab
 :code:`participant_data`               14     `ConversationParticipantData`_ repeated                                                                       
 :code:`network_type`                   18     `NetworkType`_                 repeated                                                                       
 :code:`force_history_state`            19     `ForceHistory`_                optional                                                                       
+:code:`group_link_sharing_status`      22     `GroupLinkSharingStatus`_      optional                                                                       
 ====================================== ====== ============================== ======== ======================================================================
 
 EasterEgg
@@ -467,12 +481,14 @@ Field                   Number Type             Label    Description
 Photo
 -----
 
-===================================== ====== ====== ======== ===========
-Field                                 Number Type   Label    Description
-===================================== ====== ====== ======== ===========
-:code:`photo_id`                      1      string optional            
-:code:`delete_albumless_source_photo` 2      bool   optional            
-===================================== ====== ====== ======== ===========
+===================================== ====== ====== ======== =============================================================================
+Field                                 Number Type   Label    Description                                                                  
+===================================== ====== ====== ======== =============================================================================
+:code:`photo_id`                      1      string optional Picasa photo ID.                                                             
+:code:`delete_albumless_source_photo` 2      bool   optional                                                                              
+:code:`user_id`                       3      string optional Optional Picasa user ID needed for photos from other accounts (eg. stickers).
+:code:`is_custom_user_id`             4      bool   optional Must be true if user_id is specified.                                        
+===================================== ====== ====== ======== =============================================================================
 
 ExistingMedia
 -------------
@@ -569,20 +585,20 @@ Name                                        Number Description
 EntityProperties
 ----------------
 
-======================== ====== ================= ======== ===========
-Field                    Number Type              Label    Description
-======================== ====== ================= ======== ===========
-:code:`type`             1      `ProfileType`_    optional            
-:code:`display_name`     2      string            optional            
-:code:`first_name`       3      string            optional            
-:code:`photo_url`        4      string            optional            
-:code:`email`            5      string            repeated            
-:code:`phone`            6      string            repeated            
-:code:`in_users_domain`  10     bool              optional            
-:code:`gender`           11     `Gender`_         optional            
-:code:`photo_url_status` 12     `PhotoUrlStatus`_ optional            
-:code:`canonical_email`  15     string            optional            
-======================== ====== ================= ======== ===========
+======================== ====== ================= ======== ==============================================================================
+Field                    Number Type              Label    Description                                                                   
+======================== ====== ================= ======== ==============================================================================
+:code:`type`             1      `ProfileType`_    optional                                                                               
+:code:`display_name`     2      string            optional                                                                               
+:code:`first_name`       3      string            optional                                                                               
+:code:`photo_url`        4      string            optional Photo URL with protocol scheme omitted (eg. "//lh.googleusercontent.com/...").
+:code:`email`            5      string            repeated                                                                               
+:code:`phone`            6      string            repeated                                                                               
+:code:`in_users_domain`  10     bool              optional                                                                               
+:code:`gender`           11     `Gender`_         optional                                                                               
+:code:`photo_url_status` 12     `PhotoUrlStatus`_ optional                                                                               
+:code:`canonical_email`  15     string            optional                                                                               
+======================== ====== ================= ======== ==============================================================================
 
 ConversationState
 -----------------
@@ -615,11 +631,16 @@ Field                              Number Type   Label    Description
 EntityLookupSpec
 ----------------
 
-=============== ====== ====== ======== ===========
-Field           Number Type   Label    Description
-=============== ====== ====== ======== ===========
-:code:`gaia_id` 1      string optional            
-=============== ====== ====== ======== ===========
+Specifies an entity to lookup by one of its properties.
+
+============================== ====== ====== ======== ==============================================================================
+Field                          Number Type   Label    Description                                                                   
+============================== ====== ====== ======== ==============================================================================
+:code:`gaia_id`                1      string optional                                                                               
+:code:`email`                  3      string optional                                                                               
+:code:`phone`                  4      string optional Phone number as string (eg. "+15551234567").                                  
+:code:`create_offnetwork_gaia` 6      bool   optional Whether create a gaia_id for off-network contacts (eg. Google Voice contacts).
+============================== ====== ====== ======== ==============================================================================
 
 ConfigurationBit
 ----------------
@@ -827,33 +848,42 @@ Field             Number Type        Label    Description
 SuggestedContactGroupHash
 -------------------------
 
-=================== ====== ====== ======== ============================================
-Field               Number Type   Label    Description                                 
-=================== ====== ====== ======== ============================================
-:code:`max_results` 1      uint64 optional Number of results to return from this group.
-:code:`hash`        2      bytes  optional A 4-byte hash.                              
-=================== ====== ====== ======== ============================================
+=================== ====== ====== ======== ====================================================================================
+Field               Number Type   Label    Description                                                                         
+=================== ====== ====== ======== ====================================================================================
+:code:`max_results` 1      uint64 optional Number of results to return from this group.                                        
+:code:`hash`        2      bytes  optional An optional 4-byte hash. If this matches the server's hash, no results will be sent.
+=================== ====== ====== ======== ====================================================================================
 
 SuggestedContact
 ----------------
 
-========================= ====== =================== ======== ===========
-Field                     Number Type                Label    Description
-========================= ====== =================== ======== ===========
-:code:`entity`            1      `Entity`_           optional            
-:code:`invitation_status` 2      `InvitationStatus`_ optional            
-========================= ====== =================== ======== ===========
+========================= ====== =================== ======== ================================
+Field                     Number Type                Label    Description                     
+========================= ====== =================== ======== ================================
+:code:`entity`            1      `Entity`_           optional The contact's entity.           
+:code:`invitation_status` 2      `InvitationStatus`_ optional The contact's invitation status.
+========================= ====== =================== ======== ================================
 
 SuggestedContactGroup
 ---------------------
 
-==================== ====== =================== ======== ==============
-Field                Number Type                Label    Description   
-==================== ====== =================== ======== ==============
-:code:`hash_matched` 1      bool                optional               
-:code:`hash`         2      bytes               optional A 4-byte hash.
-:code:`contact`      3      `SuggestedContact`_ repeated               
-==================== ====== =================== ======== ==============
+==================== ====== =================== ======== ====================================================================
+Field                Number Type                Label    Description                                                         
+==================== ====== =================== ======== ====================================================================
+:code:`hash_matched` 1      bool                optional True if the request's hash matched and no contacts will be included.
+:code:`hash`         2      bytes               optional A 4-byte hash which can be used in subsequent requests.             
+:code:`contact`      3      `SuggestedContact`_ repeated List of contacts in this group.                                     
+==================== ====== =================== ======== ====================================================================
+
+GroupLinkSharingModification
+----------------------------
+
+================== ====== ========================= ======== ===========
+Field              Number Type                      Label    Description
+================== ====== ========================= ======== ===========
+:code:`new_status` 1      `GroupLinkSharingStatus`_ optional            
+================== ====== ========================= ======== ===========
 
 StateUpdate
 -----------
@@ -867,6 +897,7 @@ Field                                            Number Type                    
 ================================================ ====== =============================================== ======== ====================================================================================
 :code:`state_update_header`                      1      `StateUpdateHeader`_                            optional                                                                                     
 :code:`conversation`                             13     `Conversation`_                                 optional If set, includes conversation attributes that have been updated by the notification.
+:code:`conversation_notification`                2      `ConversationNotification`_                     optional                                                                                     
 :code:`event_notification`                       3      `EventNotification`_                            optional                                                                                     
 :code:`focus_notification`                       4      `SetFocusNotification`_                         optional                                                                                     
 :code:`typing_notification`                      5      `SetTypingNotification`_                        optional                                                                                     
@@ -908,6 +939,15 @@ Field                Number Type           Label    Description
 ==================== ====== ============== ======== ===========
 :code:`state_update` 1      `StateUpdate`_ repeated            
 ==================== ====== ============== ======== ===========
+
+ConversationNotification
+------------------------
+
+==================== ====== =============== ======== ===========
+Field                Number Type            Label    Description
+==================== ====== =============== ======== ===========
+:code:`conversation` 1      `Conversation`_ optional            
+==================== ====== =============== ======== ===========
 
 EventNotification
 -----------------
@@ -1067,6 +1107,26 @@ Field                   Number Type              Label    Description
 :code:`conversation_id` 1      `ConversationId`_ optional            
 ======================= ====== ================= ======== ===========
 
+OffnetworkAddress
+-----------------
+
+============= ====== ======================== ======== ===========
+Field         Number Type                     Label    Description
+============= ====== ======================== ======== ===========
+:code:`type`  1      `OffnetworkAddressType`_ optional            
+:code:`email` 3      string                   optional            
+============= ====== ======================== ======== ===========
+
+EntityResult
+------------
+
+=================== ====== =================== ======== ===========
+Field               Number Type                Label    Description
+=================== ====== =================== ======== ===========
+:code:`lookup_spec` 1      `EntityLookupSpec`_ optional            
+:code:`entity`      2      `Entity`_           repeated            
+=================== ====== =================== ======== ===========
+
 AddUserRequest
 --------------
 
@@ -1157,15 +1217,16 @@ Field                   Number Type              Label    Description
 GetConversationRequest
 ----------------------
 
-=================================== ====== ========================= ======== ===========
-Field                               Number Type                      Label    Description
-=================================== ====== ========================= ======== ===========
-:code:`request_header`              1      `RequestHeader`_          optional            
-:code:`conversation_spec`           2      `ConversationSpec`_       optional            
-:code:`include_event`               4      bool                      optional            
-:code:`max_events_per_conversation` 6      uint64                    optional            
-:code:`event_continuation_token`    7      `EventContinuationToken`_ optional            
-=================================== ====== ========================= ======== ===========
+===================================== ====== ========================= ======== ====================================================================================================================
+Field                                 Number Type                      Label    Description                                                                                                         
+===================================== ====== ========================= ======== ====================================================================================================================
+:code:`request_header`                1      `RequestHeader`_          optional                                                                                                                     
+:code:`conversation_spec`             2      `ConversationSpec`_       optional                                                                                                                     
+:code:`include_conversation_metadata` 3      bool                      optional Whether the ConversationState in the response should include metadata other than the conversation ID (default true).
+:code:`include_event`                 4      bool                      optional Whether to include list of events in the response (default true).                                                   
+:code:`max_events_per_conversation`   6      uint64                    optional                                                                                                                     
+:code:`event_continuation_token`      7      `EventContinuationToken`_ optional                                                                                                                     
+===================================== ====== ========================= ======== ====================================================================================================================
 
 GetConversationResponse
 -----------------------
@@ -1190,27 +1251,49 @@ Field                     Number Type                Label    Description
 GetEntityByIdResponse
 ---------------------
 
-======================= ====== ================= ======== ===========
-Field                   Number Type              Label    Description
-======================= ====== ================= ======== ===========
-:code:`response_header` 1      `ResponseHeader`_ optional            
-:code:`entity`          2      `Entity`_         repeated            
-======================= ====== ================= ======== ===========
+======================= ====== ================= ======== =================================================
+Field                   Number Type              Label    Description                                      
+======================= ====== ================= ======== =================================================
+:code:`response_header` 1      `ResponseHeader`_ optional                                                  
+:code:`entity`          2      `Entity`_         repeated Resulting entities of PARTICIPANT_TYPE_GAIA only.
+:code:`entity_result`   3      `EntityResult`_   repeated All resulting entities.                          
+======================= ====== ================= ======== =================================================
+
+GetGroupConversationUrlRequest
+------------------------------
+
+======================= ====== ================= ======== =================================
+Field                   Number Type              Label    Description                      
+======================= ====== ================= ======== =================================
+:code:`request_header`  1      `RequestHeader`_  optional                                  
+:code:`conversation_id` 2      `ConversationId`_ optional Conversation to retrieve URL for.
+======================= ====== ================= ======== =================================
+
+GetGroupConversationUrlResponse
+-------------------------------
+
+============================== ====== ================= ======== ====================================
+Field                          Number Type              Label    Description                         
+============================== ====== ================= ======== ====================================
+:code:`response_header`        1      `ResponseHeader`_ optional                                     
+:code:`group_conversation_url` 2      string            optional URL for others to join conversation.
+============================== ====== ================= ======== ====================================
 
 GetSuggestedEntitiesRequest
 ---------------------------
 
-================================== ====== ============================ ======== ===========
-Field                              Number Type                         Label    Description
-================================== ====== ============================ ======== ===========
-:code:`request_header`             1      `RequestHeader`_             optional            
-:code:`favorites`                  8      `SuggestedContactGroupHash`_ optional            
-:code:`contacts_you_hangout_with`  9      `SuggestedContactGroupHash`_ optional            
-:code:`other_contacts_on_hangouts` 10     `SuggestedContactGroupHash`_ optional            
-:code:`other_contacts`             11     `SuggestedContactGroupHash`_ optional            
-:code:`dismissed_contacts`         12     `SuggestedContactGroupHash`_ optional            
-:code:`pinned_favorites`           13     `SuggestedContactGroupHash`_ optional            
-================================== ====== ============================ ======== ===========
+================================== ====== ============================ ======== =============================================================
+Field                              Number Type                         Label    Description                                                  
+================================== ====== ============================ ======== =============================================================
+:code:`request_header`             1      `RequestHeader`_             optional                                                              
+:code:`max_count`                  4      uint64                       optional Max number of non-grouped entities to return.                
+:code:`favorites`                  8      `SuggestedContactGroupHash`_ optional Optional hash for "favorites" contact group.                 
+:code:`contacts_you_hangout_with`  9      `SuggestedContactGroupHash`_ optional Optional hash for "contacts you hangout with" contact group. 
+:code:`other_contacts_on_hangouts` 10     `SuggestedContactGroupHash`_ optional Optional hash for "other contacts on hangouts" contact group.
+:code:`other_contacts`             11     `SuggestedContactGroupHash`_ optional Optional hash for "other contacts" contact group.            
+:code:`dismissed_contacts`         12     `SuggestedContactGroupHash`_ optional Optional hash for "dismissed contacts" contact group.        
+:code:`pinned_favorites`           13     `SuggestedContactGroupHash`_ optional Optional hash for "pinned favorites" contact group.          
+================================== ====== ============================ ======== =============================================================
 
 GetSuggestedEntitiesResponse
 ----------------------------
@@ -1281,12 +1364,13 @@ Field                   Number Type              Label    Description
 RemoveUserRequest
 -----------------
 
-============================ ====== ===================== ======== ===========
-Field                        Number Type                  Label    Description
-============================ ====== ===================== ======== ===========
-:code:`request_header`       1      `RequestHeader`_      optional            
-:code:`event_request_header` 5      `EventRequestHeader`_ optional            
-============================ ====== ===================== ======== ===========
+============================ ====== ===================== ======== ========================================================================
+Field                        Number Type                  Label    Description                                                             
+============================ ====== ===================== ======== ========================================================================
+:code:`request_header`       1      `RequestHeader`_      optional                                                                         
+:code:`participant_id`       3      `ParticipantId`_      optional Optional participant to remove from conversation, yourself if not given.
+:code:`event_request_header` 5      `EventRequestHeader`_ optional                                                                         
+============================ ====== ===================== ======== ========================================================================
 
 RemoveUserResponse
 ------------------
@@ -1361,6 +1445,25 @@ Field                   Number Type              Label    Description
 ======================= ====== ================= ======== ===========
 :code:`response_header` 1      `ResponseHeader`_ optional            
 :code:`created_event`   6      `Event`_          optional            
+======================= ====== ================= ======== ===========
+
+SendOffnetworkInvitationRequest
+-------------------------------
+
+======================= ====== ==================== ======== ===========
+Field                   Number Type                 Label    Description
+======================= ====== ==================== ======== ===========
+:code:`request_header`  1      `RequestHeader`_     optional            
+:code:`invitee_address` 2      `OffnetworkAddress`_ optional            
+======================= ====== ==================== ======== ===========
+
+SendOffnetworkInvitationResponse
+--------------------------------
+
+======================= ====== ================= ======== ===========
+Field                   Number Type              Label    Description
+======================= ====== ================= ======== ===========
+:code:`response_header` 1      `ResponseHeader`_ optional            
 ======================= ====== ================= ======== ===========
 
 SetActiveClientRequest
@@ -1445,6 +1548,28 @@ Field                   Number Type              Label    Description
 :code:`timestamp`       2      uint64            optional            
 ======================= ====== ================= ======== ===========
 
+SetGroupLinkSharingEnabledRequest
+---------------------------------
+
+================================= ====== ========================= ======== ==============================
+Field                             Number Type                      Label    Description                   
+================================= ====== ========================= ======== ==============================
+:code:`request_header`            1      `RequestHeader`_          optional                               
+:code:`event_request_header`      2      `EventRequestHeader`_     optional                               
+:code:`group_link_sharing_status` 4      `GroupLinkSharingStatus`_ optional New group link sharing status.
+================================= ====== ========================= ======== ==============================
+
+SetGroupLinkSharingEnabledResponse
+----------------------------------
+
+============================ ====== ================= ======== =================================================================
+Field                        Number Type              Label    Description                                                      
+============================ ====== ================= ======== =================================================================
+:code:`response_header`      1      `ResponseHeader`_ optional                                                                  
+:code:`created_event`        2      `Event`_          optional Created event of type EVENT_TYPE_GROUP_LINK_SHARING_MODIFICATION.
+:code:`updated_conversation` 3      `Conversation`_   optional Updated conversation.                                            
+============================ ====== ================= ======== =================================================================
+
 SetPresenceRequest
 ------------------
 
@@ -1527,13 +1652,14 @@ Field                               Number Type             Label    Description
 SyncRecentConversationsResponse
 -------------------------------
 
-========================== ====== ==================== ======== ===========
-Field                      Number Type                 Label    Description
-========================== ====== ==================== ======== ===========
-:code:`response_header`    1      `ResponseHeader`_    optional            
-:code:`sync_timestamp`     2      uint64               optional            
-:code:`conversation_state` 3      `ConversationState`_ repeated            
-========================== ====== ==================== ======== ===========
+================================ ====== ========================= ======== ===========
+Field                            Number Type                      Label    Description
+================================ ====== ========================= ======== ===========
+:code:`response_header`          1      `ResponseHeader`_         optional            
+:code:`sync_timestamp`           2      uint64                    optional            
+:code:`conversation_state`       3      `ConversationState`_      repeated            
+:code:`event_continuation_token` 4      `EventContinuationToken`_ optional            
+================================ ====== ========================= ======== ===========
 
 UpdateWatermarkRequest
 ----------------------
@@ -1711,23 +1837,25 @@ Name                        Number Description
 EventType
 ---------
 
-======================================= ====== ===========
-Name                                    Number Description
-======================================= ====== ===========
-:code:`EVENT_TYPE_UNKNOWN`              0                 
-:code:`EVENT_TYPE_REGULAR_CHAT_MESSAGE` 1                 
-:code:`EVENT_TYPE_SMS`                  2                 
-:code:`EVENT_TYPE_VOICEMAIL`            3                 
-:code:`EVENT_TYPE_ADD_USER`             4                 
-:code:`EVENT_TYPE_REMOVE_USER`          5                 
-:code:`EVENT_TYPE_CONVERSATION_RENAME`  6                 
-:code:`EVENT_TYPE_HANGOUT`              7                 
-:code:`EVENT_TYPE_PHONE_CALL`           8                 
-:code:`EVENT_TYPE_OTR_MODIFICATION`     9                 
-:code:`EVENT_TYPE_PLAN_MUTATION`        10                
-:code:`EVENT_TYPE_MMS`                  11                
-:code:`EVENT_TYPE_DEPRECATED_12`        12                
-======================================= ====== ===========
+================================================== ====== ===========
+Name                                               Number Description
+================================================== ====== ===========
+:code:`EVENT_TYPE_UNKNOWN`                         0                 
+:code:`EVENT_TYPE_REGULAR_CHAT_MESSAGE`            1                 
+:code:`EVENT_TYPE_SMS`                             2                 
+:code:`EVENT_TYPE_VOICEMAIL`                       3                 
+:code:`EVENT_TYPE_ADD_USER`                        4                 
+:code:`EVENT_TYPE_REMOVE_USER`                     5                 
+:code:`EVENT_TYPE_CONVERSATION_RENAME`             6                 
+:code:`EVENT_TYPE_HANGOUT`                         7                 
+:code:`EVENT_TYPE_PHONE_CALL`                      8                 
+:code:`EVENT_TYPE_OTR_MODIFICATION`                9                 
+:code:`EVENT_TYPE_PLAN_MUTATION`                   10                
+:code:`EVENT_TYPE_MMS`                             11                
+:code:`EVENT_TYPE_DEPRECATED_12`                   12                
+:code:`EVENT_TYPE_OBSERVED_EVENT`                  13                
+:code:`EVENT_TYPE_GROUP_LINK_SHARING_MODIFICATION` 14                
+================================================== ====== ===========
 
 ConversationType
 ----------------
@@ -1775,15 +1903,27 @@ Name                                 Number Description
 :code:`DELIVERY_MEDIUM_LOCAL_SMS`    3                 
 ==================================== ====== ===========
 
+InvitationAffinity
+------------------
+
+=============================== ====== ===========
+Name                            Number Description
+=============================== ====== ===========
+:code:`INVITE_AFFINITY_UNKNOWN` 0                 
+:code:`INVITE_AFFINITY_HIGH`    1                 
+:code:`INVITE_AFFINITY_LOW`     2                 
+=============================== ====== ===========
+
 ParticipantType
 ---------------
 
-================================ ====== ===========
-Name                             Number Description
-================================ ====== ===========
-:code:`PARTICIPANT_TYPE_UNKNOWN` 0                 
-:code:`PARTICIPANT_TYPE_GAIA`    2                 
-================================ ====== ===========
+===================================== ====== ===========
+Name                                  Number Description
+===================================== ====== ===========
+:code:`PARTICIPANT_TYPE_UNKNOWN`      0                 
+:code:`PARTICIPANT_TYPE_GAIA`         2                 
+:code:`PARTICIPANT_TYPE_GOOGLE_VOICE` 3                 
+===================================== ====== ===========
 
 InvitationStatus
 ----------------
@@ -1809,12 +1949,13 @@ Name                          Number Description
 NetworkType
 -----------
 
-============================ ====== ===========
-Name                         Number Description
-============================ ====== ===========
-:code:`NETWORK_TYPE_UNKNOWN` 0                 
-:code:`NETWORK_TYPE_BABEL`   1                 
-============================ ====== ===========
+================================= ====== ===========
+Name                              Number Description
+================================= ====== ===========
+:code:`NETWORK_TYPE_UNKNOWN`      0                 
+:code:`NETWORK_TYPE_BABEL`        1                 
+:code:`NETWORK_TYPE_GOOGLE_VOICE` 2                 
+================================= ====== ===========
 
 BlockState
 ----------
@@ -1843,30 +1984,31 @@ ClientId
 
 Identifies the client.
 
-============================= ====== ======================================
-Name                          Number Description                           
-============================= ====== ======================================
-:code:`CLIENT_ID_UNKNOWN`     0                                            
-:code:`CLIENT_ID_ANDROID`     1      Hangouts app for Android.             
-:code:`CLIENT_ID_IOS`         2      Hangouts app for iOS.                 
-:code:`CLIENT_ID_CHROME`      3      Hangouts Chrome extension.            
-:code:`CLIENT_ID_WEB_GPLUS`   5      Hangouts web interface in Google Plus.
-:code:`CLIENT_ID_WEB_GMAIL`   6      Hangouts web interface in Gmail.      
-:code:`CLIENT_ID_ULTRAVIOLET` 13     Hangouts Chrome app ("ultraviolet").  
-============================= ====== ======================================
+============================== ====== ===============================================
+Name                           Number Description                                    
+============================== ====== ===============================================
+:code:`CLIENT_ID_UNKNOWN`      0                                                     
+:code:`CLIENT_ID_ANDROID`      1      Hangouts app for Android.                      
+:code:`CLIENT_ID_IOS`          2      Hangouts app for iOS.                          
+:code:`CLIENT_ID_CHROME`       3      Hangouts Chrome extension.                     
+:code:`CLIENT_ID_WEB_GPLUS`    5      Hangouts web interface in Google Plus.         
+:code:`CLIENT_ID_WEB_GMAIL`    6      Hangouts web interface in Gmail.               
+:code:`CLIENT_ID_ULTRAVIOLET`  13     Hangouts Chrome app ("ultraviolet").           
+:code:`CLIENT_ID_WEB_HANGOUTS` 44     Hangouts web app (https://hangouts.google.com).
+============================== ====== ===============================================
 
 ClientBuildType
 ---------------
 
 Build type of the client.
 
-================================= ====== ===========
-Name                              Number Description
-================================= ====== ===========
-:code:`BUILD_TYPE_UNKNOWN`        0                 
-:code:`BUILD_TYPE_PRODUCTION_WEB` 1      Web app.   
-:code:`BUILD_TYPE_PRODUCTION_APP` 3      Native app.
-================================= ====== ===========
+================================= ====== ============================
+Name                              Number Description                 
+================================= ====== ============================
+:code:`BUILD_TYPE_UNKNOWN`        0                                  
+:code:`BUILD_TYPE_PRODUCTION_WEB` 1      Web app (not used anymore?).
+:code:`BUILD_TYPE_PRODUCTION_APP` 3      Native app.                 
+================================= ====== ============================
 
 ResponseStatus
 --------------
@@ -1960,6 +2102,7 @@ Name                                      Number Description
 :code:`CONFIGURATION_BIT_TYPE_UNKNOWN_33` 33                
 :code:`CONFIGURATION_BIT_TYPE_UNKNOWN_34` 34                
 :code:`CONFIGURATION_BIT_TYPE_UNKNOWN_35` 35                
+:code:`CONFIGURATION_BIT_TYPE_UNKNOWN_36` 36                
 ========================================= ====== ===========
 
 RichPresenceType
@@ -1985,7 +2128,10 @@ Name                         Number Description
 ============================ ====== ===========
 :code:`FIELD_MASK_REACHABLE` 1                 
 :code:`FIELD_MASK_AVAILABLE` 2                 
+:code:`FIELD_MASK_MOOD`      3                 
+:code:`FIELD_MASK_IN_CALL`   6                 
 :code:`FIELD_MASK_DEVICE`    7                 
+:code:`FIELD_MASK_LAST_SEEN` 10                
 ============================ ====== ===========
 
 DeleteType
@@ -2058,4 +2204,25 @@ Name                                        Number Description
 =========================================== ====== ===========
 :code:`PHONE_VALIDATION_RESULT_IS_POSSIBLE` 0                 
 =========================================== ====== ===========
+
+OffnetworkAddressType
+---------------------
+
+======================================= ====== ===========
+Name                                    Number Description
+======================================= ====== ===========
+:code:`OFFNETWORK_ADDRESS_TYPE_UNKNOWN` 0                 
+:code:`OFFNETWORK_ADDRESS_TYPE_EMAIL`   1                 
+======================================= ====== ===========
+
+GroupLinkSharingStatus
+----------------------
+
+========================================= ====== ===========
+Name                                      Number Description
+========================================= ====== ===========
+:code:`GROUP_LINK_SHARING_STATUS_UNKNOWN` 0                 
+:code:`GROUP_LINK_SHARING_STATUS_ON`      1                 
+:code:`GROUP_LINK_SHARING_STATUS_OFF`     2                 
+========================================= ====== ===========
 

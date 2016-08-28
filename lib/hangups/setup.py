@@ -3,6 +3,11 @@ from setuptools.command.test import test as TestCommand
 import os
 import sys
 
+
+if sys.version_info < (3, 3):
+    raise RuntimeError("hangups requires Python 3.3+")
+
+
 # Find __version__ without import that requires dependencies to be installed:
 exec(open(os.path.join(
     os.path.dirname(__file__), 'hangups/version.py'
@@ -55,10 +60,9 @@ with open('README.rst') as f:
 
 
 install_requires = [
-    'ConfigArgParse==0.9.3',
+    'ConfigArgParse==0.10.0',
     'aiohttp==0.17.3',
     'appdirs==1.4.0',
-    'purplex==0.2.4',
     'readlike>=0.1',
     'requests==2.6.0',
     'ReParser==1.4.3',
@@ -101,9 +105,9 @@ setup(
     install_requires=install_requires,
     tests_require=[
         # >= 2.7.3 required for Python 3.5 support
-        'pytest==2.7.3',
-        'pylint==1.4.4',
-        'pep8==1.6.2',
+        'pytest==2.8.7',
+        'pylint==1.5.4',
+        'pep8==1.7.0',
     ],
     cmdclass={
         'test': PytestCommand,

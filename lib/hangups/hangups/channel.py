@@ -17,6 +17,7 @@ https://web.archive.org/web/20121226064550/http://code.google.com/p/libevent-bro
 
 import aiohttp
 import asyncio
+import codecs
 import hashlib
 import json
 import logging
@@ -26,6 +27,7 @@ import time
 from hangups import http_utils, event, exceptions
 
 logger = logging.getLogger(__name__)
+Utf8IncrementalDecoder = codecs.getincrementaldecoder('utf-8')
 LEN_REGEX = re.compile(r'([0-9]+)\n', re.MULTILINE)
 ORIGIN_URL = 'https://talkgadget.google.com'
 CHANNEL_URL_PREFIX = 'https://0.client-channel.google.com/client-channel/{}'
@@ -59,17 +61,9 @@ def get_authorization_headers(sapisid_cookie):
 
 
 def _best_effort_decode(data_bytes):
-    """Decode data_bytes into a string using UTF-8.
-
-    If data_bytes cannot be decoded, pop the last byte until it can be or
-    return an empty string.
-    """
-    for end in reversed(range(1, len(data_bytes) + 1)):
-        try:
-            return data_bytes[0:end].decode()
-        except UnicodeDecodeError:
-            pass
-    return ''
+    """Decode as much of data_bytes as possible as UTF-8."""
+    decoder = Utf8IncrementalDecoder()
+    return decoder.decode(data_bytes)
 
 
 class ChunkParser(object):
@@ -95,7 +89,7 @@ class ChunkParser(object):
         The length is actually the length of the string as reported by
         JavaScript. JavaScript's string length function returns the number of
         code units in the string, represented in UTF-16. We can emulate this by
-        encoding everything in UTF-16 and multipling the reported length by 2.
+        encoding everything in UTF-16 and multiplying the reported length by 2.
 
         Note that when encoding a string in UTF-16, Python will prepend a
         byte-order character, so we need to remove the first two bytes.
@@ -107,15 +101,16 @@ class ChunkParser(object):
             buf_decoded = _best_effort_decode(self._buf)
             buf_utf16 = buf_decoded.encode('utf-16')[2:]
 
-            lengths = LEN_REGEX.findall(buf_decoded)
-            if len(lengths) == 0:
+            length_str_match = LEN_REGEX.match(buf_decoded)
+            if length_str_match is None:
                 break
             else:
+                length_str = length_str_match.group(1)
                 # Both lengths are in number of bytes in UTF-16 encoding.
                 # The length of the submission:
-                length = int(lengths[0]) * 2
+                length = int(length_str) * 2
                 # The length of the submission length and newline:
-                length_length = len((lengths[0] + '\n').encode('utf-16')[2:])
+                length_length = len((length_str + '\n').encode('utf-16')[2:])
                 if len(buf_utf16) - length_length < length:
                     break
 
@@ -123,7 +118,7 @@ class ChunkParser(object):
                 yield submission.decode('utf-16')
                 # Drop the length and the submission itself from the beginning
                 # of the buffer.
-                drop_length = (len((lengths[0] + '\n').encode()) +
+                drop_length = (len((length_str + '\n').encode()) +
                                len(submission.decode('utf-16').encode()))
                 self._buf = self._buf[drop_length:]
 

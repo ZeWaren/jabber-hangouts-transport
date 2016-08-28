@@ -12,10 +12,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_NAME = 'Unknown'
 
 UserID = namedtuple('UserID', ['chat_id', 'gaia_id'])
-NameType = enum.IntEnum('NameType', dict(DEFAULT=0, NUMERIC=1, REAL=2))
+<<<<<<< HEAD
 Presence = namedtuple('Presence', ['reachable', 'available', 'device_status', 'mood_setting'])
 DeviceStatus = namedtuple('DeviceStatus', ['mobile', 'desktop', 'tablet'])
 MoodSetting = namedtuple('MoodSetting', ['mood_message'])
+=======
+NameType = enum.IntEnum('NameType', dict(DEFAULT=0, NUMERIC=1, REAL=2))
+>>>>>>> a8b2d3f67424c36020e84244760430096caf0b8e
 
 
 class User(object):
@@ -33,8 +36,6 @@ class User(object):
                  is_self, presence, participant_type):
         """Initialize a User."""
 
-        self.id_ = user_id
-
         if not full_name:
             self.full_name = self.first_name = DEFAULT_NAME
             self.name_type = NameType.DEFAULT
@@ -46,8 +47,15 @@ class User(object):
             self.first_name = (first_name if first_name
                                else self.full_name.split()[0])
             self.name_type = NameType.REAL
-        self.unique_full_name = self.create_unique_full_name()
 
+        self.id_ = user_id
+<<<<<<< HEAD
+        self.full_name = full_name if full_name != '' else DEFAULT_NAME
+        self.first_name = (first_name if first_name != ''
+                           else self.full_name.split()[0])
+        self.unique_full_name = self.create_unique_full_name()
+=======
+>>>>>>> a8b2d3f67424c36020e84244760430096caf0b8e
         self.photo_url = photo_url
         self.emails = emails
         self.phones = phones
@@ -84,7 +92,6 @@ class User(object):
                 self.full_name_list[full_name] = self.id_
                 return full_name
 
-
     def upgrade_name(self, user_):
         """Upgrade name type of user.
 
@@ -111,7 +118,7 @@ class User(object):
                             device_status=DeviceStatus(mobile=entity.presence.device_status.mobile,
                                      desktop=entity.presence.device_status.desktop,
                                      tablet=entity.presence.device_status.tablet),
-                            mood_setting=MoodSetting(mood_message=entity.presence.mood_message.mood_content))
+                            mood_setting=MoodSetting(mood_message=entity.presence.mood_setting.mood_message.mood_content))
 
         return User(user_id, entity.properties.display_name,
                     entity.properties.first_name,
@@ -138,7 +145,7 @@ class User(object):
                             device_status=DeviceStatus(mobile=pb2_presence.device_status.mobile,
                                      desktop=pb2_presence.device_status.desktop,
                                      tablet=pb2_presence.device_status.tablet),
-                            mood_setting=MoodSetting(mood_message=pb2_presence.mood_message.mood_content))
+                            mood_setting=MoodSetting(mood_message=pb2_presence.mood_setting.mood_message.mood_content))
 
     def get_mood_message(self):
         if self.presence is None:

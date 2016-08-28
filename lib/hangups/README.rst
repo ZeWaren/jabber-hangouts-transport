@@ -6,7 +6,7 @@ hangups
     :alt: Build Status
 
 .. image:: https://readthedocs.org/projects/hangups/badge/?version=latest
-    :target: https://readthedocs.org/projects/hangups/?badge=latest
+    :target: https://hangups.readthedocs.io/
     :alt: Documentation Status
 
 hangups is the first third-party instant messaging client for `Google
@@ -33,7 +33,7 @@ Documentation
 
 See the documentation for `installation and usage instructions`_.
 
-.. _installation and usage instructions: http://hangups.readthedocs.org/
+.. _installation and usage instructions: https://hangups.readthedocs.io/
 
 Projects using hangups
 ----------------------
@@ -48,6 +48,7 @@ Projects using hangups
 - `pickups`_: IRC gateway for hangups (prototype)
 - `telepathy-hangups`_: Telepathy bindings for Google Chat via hangups library
 - `wardellchandler/HangoutsBot`_: Python 3 Bot for Hangouts
+- `jabber-hangouts-transport`_: A Jabber/XMPP transport/gateway to Hangouts.
 
 .. _HangupsBot: https://github.com/xmikos/hangupsbot
 .. _Hubot Hangouts Adapter: https://github.com/groupby/hubot-hangups
@@ -59,14 +60,29 @@ Projects using hangups
 .. _pickups: https://github.com/mtomwing/pickups
 .. _telepathy-hangups: https://github.com/davidedmundson/telepathy-hangups
 .. _wardellchandler/HangoutsBot: https://github.com/wardellchandler/HangoutsBot
+.. _jabber-hangouts-transport: https://github.com/ZeWaren/jabber-hangouts-transport
 
 Related projects
 ----------------
 
 - `Hangish`_: A Google Hangouts native client for Sailfish
-- `hangupsjs`_: Port of hangups to Node.js
+- `Hangups-UWP`_: Hangups client for Universal Windows Platform
+- `WTalk`_: Client library and desktop client for Google Hangouts written in C#
 - `hangover`_: The first native Mac OS X client for Google Hangouts
+- `hangupsjs`_: Port of hangups to Node.js
+- `Parrot`_: The next generation messenger
+- `purple-hangouts`_: Hangouts plugin for libpurple
+- `go-hangups`_: Port of hangups to Go
+- `slangouts`_: A Hangouts/Slack bridge
+- `YakYak`_: Desktop client for Google Hangouts
 
 .. _Hangish: https://github.com/rogora/hangish
-.. _hangupsjs: https://github.com/algesten/hangupsjs
+.. _Hangups-UWP: https://github.com/kfechter/Hangups-UWP
+.. _WTalk: https://github.com/madagaga/WTalk
 .. _hangover: https://github.com/psobot/hangover
+.. _hangupsjs: https://github.com/algesten/hangupsjs
+.. _Parrot: https://github.com/avaidyam/Parrot
+.. _purple-hangouts: https://bitbucket.org/EionRobb/purple-hangouts
+.. _go-hangups: https://github.com/gpavlidi/go-hangups
+.. _slangouts: https://github.com/gpavlidi/slangouts
+.. _YakYak: https://github.com/yakyak/yakyak

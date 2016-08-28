@@ -11,9 +11,18 @@ import urwid
 import readlike
 
 import hangups
+from hangups.ui.emoticon import replace_emoticons
 from hangups.ui.notify import Notifier
 from hangups.ui.utils import get_conv_name
 from hangups.ui.utils import add_color_to_scheme
+
+
+# hangups used to require a fork of urwid called hangups-urwid which may still
+# be installed and create a conflict with the 'urwid' package name. See #198.
+if urwid.__version__ == '1.2.2-dev':
+    sys.exit('error: hangups-urwid package is installed\n\n'
+             'Please uninstall hangups-urwid and urwid, and reinstall '
+             'hangups.')
 
 
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -48,10 +57,11 @@ class ChatUI(object):
     """User interface for hangups."""
 
     def __init__(self, refresh_token_path, keybindings, palette,
-                 palette_colors, datetimefmt, disable_notifier):
+                 palette_colors, datetimefmt, notifier):
         """Start the user interface."""
         self._keys = keybindings
         self._datetimefmt = datetimefmt
+        self._notifier = notifier
 
         set_terminal_title('hangups')
 
@@ -60,8 +70,6 @@ class ChatUI(object):
         self._tabbed_window = None  # TabbedWindowWidget
         self._conv_list = None  # hangups.ConversationList
         self._user_list = None  # hangups.UserList
-        self._notifier = None  # hangups.notify.Notifier
-        self._disable_notifier = disable_notifier
 
         # TODO Add urwid widget for getting auth.
         try:
@@ -153,8 +161,7 @@ class ChatUI(object):
             yield from hangups.build_user_conversation_list(self._client)
         )
         self._conv_list.on_event.add_observer(self._on_event)
-        if not self._disable_notifier:
-            self._notifier = Notifier(self._conv_list)
+
         # show the conversation menu
         conv_picker = ConversationPickerWidget(self._conv_list,
                                                self.on_select_conversation,
@@ -165,7 +172,7 @@ class ChatUI(object):
         self._urwid_loop.widget = self._tabbed_window
 
     def _on_event(self, conv_event):
-        """Open conversation tab for new messages when they arrive."""
+        """Open conversation tab for new messages & pass events to notifier."""
         conv = self._conv_list.get(conv_event.conversation_id)
         user = conv.get_user(conv_event.user_id)
         add_tab = all((
@@ -175,6 +182,9 @@ class ChatUI(object):
         ))
         if add_tab:
             self.add_conversation_tab(conv_event.conversation_id)
+        # Handle notifications
+        if self._notifier is not None:
+            self._notifier.on_event(conv, conv_event)
 
     def _on_quit(self):
         """Handle the user quitting the application."""
@@ -421,13 +431,15 @@ class StatusLineWidget(urwid.WidgetWrap):
 
     def _update(self):
         """Update status text."""
-        typers = [self._conversation.get_user(user_id).first_name
-                  for user_id, status in self._typing_statuses.items()
-                  if status == hangups.TYPING_TYPE_STARTED]
-        if len(typers) > 0:
+        typing_users = [self._conversation.get_user(user_id)
+                        for user_id, status in self._typing_statuses.items()
+                        if status == hangups.TYPING_TYPE_STARTED]
+        displayed_names = [user.first_name for user in typing_users
+                           if not user.is_self]
+        if len(displayed_names) > 0:
             typing_message = '{} {} typing...'.format(
-                ', '.join(sorted(typers)),
-                'is' if len(typers) == 1 else 'are'
+                ', '.join(sorted(displayed_names)),
+                'is' if len(displayed_names) == 1 else 'are'
             )
         else:
             typing_message = ''
@@ -518,7 +530,18 @@ class MessageWidget(urwid.WidgetWrap):
                 hangups.HANGOUT_EVENT_TYPE_END: (
                     'A Hangout call ended.'
                 ),
+                hangups.HANGOUT_EVENT_TYPE_ONGOING: (
+                    'A Hangout call is ongoing.'
+                ),
             }.get(conv_event.event_type, 'Unknown Hangout call event.')
+            return MessageWidget(conv_event.timestamp, text, datetimefmt,
+                                 show_date=is_new_day)
+        elif isinstance(conv_event, hangups.GroupLinkSharingModificationEvent):
+            status_on = hangups.GROUP_LINK_SHARING_STATUS_ON
+            status_text = ('on' if conv_event.new_status == status_on
+                           else 'off')
+            text = '{} turned {} joining by link.'.format(user.first_name,
+                                                          status_text)
             return MessageWidget(conv_event.timestamp, text, datetimefmt,
                                  show_date=is_new_day)
         else:
@@ -729,6 +752,7 @@ class ConversationWidget(urwid.WidgetWrap):
             text = ''
         else:
             image_file = None
+        text = replace_emoticons(text)
         # XXX: Exception handling here is still a bit broken. Uncaught
         # exceptions in _on_message_sent will only be logged.
         segments = hangups.ChatMessageSegment.from_str(text)
@@ -781,8 +805,8 @@ class TabbedWindowWidget(urwid.WidgetWrap):
             palette = ('active_tab' if num == self._tab_index
                        else 'inactive_tab')
             text += [
-                (palette, ' {} '.format(self._widget_title[widget]).encode()),
-                ('tab_background', b' '),
+                (palette, ' {} '.format(self._widget_title[widget])),
+                ('tab_background', ' '),
             ]
         self._tabs.set_text(text)
         self._frame.contents['body'] = (self._widgets[self._tab_index], None)
@@ -885,8 +909,6 @@ def main():
                       version='hangups {}'.format(hangups.__version__))
     general_group.add('-d', '--debug', action='store_true',
                       help='log detailed debugging messages')
-    general_group.add('-n', '--disable-notifications', action='store_true',
-                      help='disable desktop notifications')
     general_group.add('--log', default=default_log_path, help='log file path')
     key_group = parser.add_argument_group('Keybindings')
     key_group.add('--key-next-tab', default='ctrl d',
@@ -903,6 +925,13 @@ def main():
                   help='keybinding for alternate up key')
     key_group.add('--key-down', default='j',
                   help='keybinding for alternate down key')
+    notification_group = parser.add_argument_group('Notifications')
+    notification_group.add('-n', '--disable-notifications',
+                           action='store_true',
+                           help='disable desktop notifications')
+    notification_group.add('-D', '--discreet-notifications',
+                           action='store_true',
+                           help='hide message details in notifications')
 
     # add color scheme options
     col_group = parser.add_argument_group('Colors')
@@ -941,6 +970,11 @@ def main():
                                          getattr(args, 'col_' + name + '_bg'),
                                          palette_colors)
 
+    if not args.disable_notifications:
+        notifier = Notifier(args.discreet_notifications)
+    else:
+        notifier = None
+
     try:
         ChatUI(
             args.token_path, {
@@ -951,8 +985,7 @@ def main():
                 'menu': args.key_menu,
                 'up': args.key_up,
                 'down': args.key_down
-            }, col_scheme, palette_colors,
-            datetimefmt, args.disable_notifications
+            }, col_scheme, palette_colors, datetimefmt, notifier
         )
     except KeyboardInterrupt:
         sys.exit('Caught KeyboardInterrupt, exiting abnormally')

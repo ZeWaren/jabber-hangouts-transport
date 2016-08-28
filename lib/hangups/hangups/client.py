@@ -1,18 +1,21 @@
 """Abstract class for writing chat clients."""
 
-import aiohttp
 import asyncio
+import base64
+import binascii
 import json
 import logging
+import os
 import random
 import time
-import os
 
-from hangups import (javascript, exceptions, http_utils, channel, event,
-                     hangouts_pb2, pblite, version)
+import aiohttp
+import google.protobuf.message
+
+from hangups import (exceptions, http_utils, channel, event, hangouts_pb2,
+                     pblite, version)
 
 logger = logging.getLogger(__name__)
-ORIGIN_URL = 'https://talkgadget.google.com'
 IMAGE_UPLOAD_URL = 'https://docs.google.com/upload/photos/resumable'
 # Timeout to send for setactiveclient requests:
 ACTIVE_TIMEOUT_SECS = 120
@@ -56,8 +59,12 @@ class Client(object):
 
         self._request_header = hangouts_pb2.RequestHeader(
             # Ignore most of the RequestHeader fields since they aren't
-            # required.
+            # required. Sending a recognized client_id is important because it
+            # changes the behaviour of some APIs (eg. get_conversation will
+            # filter out EVENT_TYPE_GROUP_LINK_SHARING_MODIFICATION without
+            # it).
             client_version=hangouts_pb2.ClientVersion(
+                client_id=hangouts_pb2.CLIENT_ID_WEB_HANGOUTS,
                 major_version='hangups-{}'.format(version.__version__),
             ),
             language_code='en',
@@ -162,11 +169,11 @@ class Client(object):
             # email address.
             if self._email is None:
                 try:
-                    request = hangouts_pb2.GetSelfInfoRequest(
+                    get_self_info_request = hangouts_pb2.GetSelfInfoRequest(
                         request_header=self.get_request_header(),
                     )
                     get_self_info_response = yield from self.get_self_info(
-                        request
+                        get_self_info_request
                     )
                 except exceptions.NetworkError as e:
                     logger.warning('Failed to find email address: {}'
@@ -185,13 +192,13 @@ class Client(object):
                 return
 
             try:
-                request = hangouts_pb2.SetActiveClientRequest(
+                set_active_request = hangouts_pb2.SetActiveClientRequest(
                     request_header=self.get_request_header(),
                     is_active=True,
                     full_jid="{}/{}".format(self._email, self._client_id),
                     timeout_secs=ACTIVE_TIMEOUT_SECS,
                 )
-                yield from self.set_active_client(request)
+                yield from self.set_active_client(set_active_request)
             except exceptions.NetworkError as e:
                 logger.warning('Failed to set active client: {}'.format(e))
             else:
@@ -324,12 +331,20 @@ class Client(object):
                      request_pb)
         res = yield from self._base_request(
             'https://clients6.google.com/chat/v1/{}'.format(endpoint),
-            'application/json+protobuf',  # The request body is pblite.
-            'protojson',  # The response should be pblite.
-            json.dumps(pblite.encode(request_pb))
+            'application/x-protobuf',  # Request body is Protocol Buffer.
+            'proto',  # Response body is Protocol Buffer.
+            request_pb.SerializeToString()
         )
-        pblite.decode(response_pb, javascript.loads(res.body.decode()),
-                      ignore_first_item=True)
+        try:
+            response_pb.ParseFromString(base64.b64decode(res.body))
+        except binascii.Error as e:
+            raise exceptions.NetworkError(
+                'Failed to decode base64 response: {}'.format(e)
+            )
+        except google.protobuf.message.DecodeError as e:
+            raise exceptions.NetworkError(
+                'Failed to decode Protocol Buffer response: {}'.format(e)
+            )
         logger.debug('Received Protocol Buffer response:\n%s', response_pb)
         status = response_pb.response_header.status
         if status != hangouts_pb2.RESPONSE_STATUS_OK:
@@ -361,6 +376,9 @@ class Client(object):
         sapisid_cookie = self._get_cookie('SAPISID')
         headers = channel.get_authorization_headers(sapisid_cookie)
         headers['content-type'] = content_type
+        # This header is required for Protocol Buffer responses, which causes
+        # them to be base64 encoded:
+        headers['X-Goog-Encode-Response-If-Executable'] = 'base64'
         required_cookies = ['SAPISID', 'HSID', 'SSID', 'APISID', 'SID']
         cookies = {cookie: self._get_cookie(cookie)
                    for cookie in required_cookies}
@@ -426,10 +444,23 @@ class Client(object):
 
     @asyncio.coroutine
     def get_entity_by_id(self, get_entity_by_id_request):
-        """Return info about a list of users."""
+        """Return one or more user entities.
+
+        Searching by phone number only finds entities when their phone number
+        is in your contacts (and not always even then), and can't be used to
+        find Google Voice contacts.
+        """
         response = hangouts_pb2.GetEntityByIdResponse()
         yield from self._pb_request('contacts/getentitybyid',
                                     get_entity_by_id_request, response)
+        return response
+
+    def get_group_conversation_url(self, get_group_conversation_url_request):
+        """Get URL to allow others to join a group conversation."""
+        response = hangouts_pb2.GetGroupConversationUrlResponse()
+        yield from self._pb_request('conversations/getgroupconversationurl',
+                                    get_group_conversation_url_request,
+                                    response)
         return response
 
     @asyncio.coroutine
@@ -438,6 +469,14 @@ class Client(object):
         response = hangouts_pb2.GetSelfInfoResponse()
         yield from self._pb_request('contacts/getselfinfo',
                                     get_self_info_request, response)
+        return response
+
+    @asyncio.coroutine
+    def get_suggested_entities(self, get_suggested_entities_request):
+        """Return suggested contacts."""
+        response = hangouts_pb2.GetSuggestedEntitiesResponse()
+        yield from self._pb_request('contacts/getsuggestedentities',
+                                    get_suggested_entities_request, response)
         return response
 
     @asyncio.coroutine
@@ -450,7 +489,7 @@ class Client(object):
 
     @asyncio.coroutine
     def remove_user(self, remove_user_request):
-        """Leave a group conversation."""
+        """Remove a participant from a group conversation."""
         response = hangouts_pb2.RemoveUserResponse()
         yield from self._pb_request('conversations/removeuser',
                                     remove_user_request, response)
@@ -471,7 +510,7 @@ class Client(object):
 
     @asyncio.coroutine
     def search_entities(self, search_entities_request):
-        """Return info for users based on a query."""
+        """Return user entities based on a query."""
         response = hangouts_pb2.SearchEntitiesResponse()
         yield from self._pb_request('contacts/searchentities',
                                     search_entities_request, response)
@@ -483,6 +522,15 @@ class Client(object):
         response = hangouts_pb2.SendChatMessageResponse()
         yield from self._pb_request('conversations/sendchatmessage',
                                     send_chat_message_request, response)
+        return response
+
+    @asyncio.coroutine
+    def send_offnetwork_invitation(self, send_offnetwork_invitation_request):
+        """Send an email to invite a non-Google contact to Hangouts."""
+        response = hangouts_pb2.SendOffnetworkInvitationResponse()
+        yield from self._pb_request('devices/sendoffnetworkinvitation',
+                                    send_offnetwork_invitation_request,
+                                    response)
         return response
 
     @asyncio.coroutine
@@ -511,6 +559,16 @@ class Client(object):
         response = hangouts_pb2.SetFocusResponse()
         yield from self._pb_request('conversations/setfocus',
                                     set_focus_request, response)
+        return response
+
+    @asyncio.coroutine
+    def set_group_link_sharing_enabled(self,
+                                       set_group_link_sharing_enabled_request):
+        """Set whether group link sharing is enabled for a conversation."""
+        response = hangouts_pb2.SetGroupLinkSharingEnabledResponse()
+        yield from self._pb_request('conversations/setgrouplinksharingenabled',
+                                    set_group_link_sharing_enabled_request,
+                                    response)
         return response
 
     @asyncio.coroutine
