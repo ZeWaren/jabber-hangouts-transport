@@ -4,7 +4,6 @@ configFile = None
 pidFile = ""
 
 jid = "hangups.example.net"
-confjid = "conf.hangups.example.net"
 discoName = "Hangouts Transport"
 
 mainServer = "127.0.0.1"

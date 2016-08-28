@@ -73,6 +73,8 @@ create a merge request with the updated version of this file.
 
 ## Usage
 
+User usage can be found in [doc/USER_USAGE.md](doc/USER_USAGE.md).
+
 ### Configuration
 #### Transport configuration
 The program will look for a config file in the following locations:
@@ -91,8 +93,6 @@ Please look at the comments in the provided example config file for information 
     module: ejabberd_service
     hosts:
       "hangups.example.net":
-        password: "secret"
-      "conf.hangups.example.net":
         password: "secret"
 </pre>
 

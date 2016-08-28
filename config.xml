@@ -6,9 +6,6 @@
     <!-- The JabberID of the transport -->
     <jid>hangups.example.net</jid>
 
-    <!-- The conference JabberID of the transport -->
-    <confjid>conf.hangups.example.net</confjid>
-
     <!-- The name of the transport in the service discovery list. -->
     <discoName>Google Hangouts Transport</discoName>
 
