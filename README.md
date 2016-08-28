@@ -13,7 +13,7 @@ Hangouts using a modified version of Tom Dryer's [hangups library](https://githu
 It has only been tested with Python 3.4 and ejabberd but it should work on other versions of Python and with other
 Jabber servers.
 
-It is currently (2015-12) in its first alpha version, and thus bugs should be expected. 
+It is currently (2016-08) in its second alpha version, and thus bugs should be expected. 
 
 Testers, documentation writers, packagers, welcome!
 
