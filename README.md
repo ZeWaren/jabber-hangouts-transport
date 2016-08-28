@@ -73,6 +73,8 @@ create a merge request with the updated version of this file.
 
 ## Usage
 
+User usage can be found in [doc/USER_USAGE.md](doc/USER_USAGE.md).
+
 ### Configuration
 #### Transport configuration
 The program will look for a config file in the following locations:
