@@ -1,0 +1,11 @@
+1.0.0.a2:
+August 28th 2016.
+2nd alpha.
+- Conversations are no longer located on a separated JID. Everything is under the main JID.
+- Conversations can now be aliased. Exemple: 107233005422865236837@hangups.example.net can now be aliased as
+  my_conf@hangups.example.net, which is more recognizable on the client sides. This is done by implementing XEP-0050.
+- Various bugfixes.
+
+1.0.0a:
+December 12th 2015.
+first Alpha.

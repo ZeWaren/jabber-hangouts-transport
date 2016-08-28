@@ -101,7 +101,7 @@ Please look at the comments in the provided example config file for information 
     # python3.4 __main__.py
 
 ## Changelog
-* 1.0.0a: first Alpha.
+See file [CHANGELOG](CHANGELOG).
 
 ## Licence
 See file [LICENSE](LICENSE).
