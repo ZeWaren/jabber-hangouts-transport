@@ -96,6 +96,15 @@ Please look at the comments in the provided example config file for information 
         password: "secret"
 </pre>
 
+##### Prosody
+Add to /etc/prosody/prosody.cfg.lua:
+<pre>
+Component "hangups.example.net"    
+    component_secret = "secret"  
+    component_ports = { 5237 }       
+    component_interface = "127.0.0.1"
+</pre>
+
 ### Startup
 
     # python3.4 __main__.py
