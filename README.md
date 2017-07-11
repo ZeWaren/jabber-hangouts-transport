@@ -1,5 +1,7 @@
 # Hangouts transport for Jabber/XMPP
 
+This project is looking for a maintainer. Since I don't have to use Hangouts anymore (thank god), I have no use for it anymore. Erwan.
+
 ## Introduction
 
 This program implements a XMPP [transport/gateway](https://en.wikipedia.org/wiki/XMPP#Connecting_to_other_protocols)
